@@ -15,10 +15,7 @@ struct CashbackCounterApp: App { // 2. 这个结构体必须遵守 App 协议
     @StateObject var manager = DataManager()
     
     var body: some Scene {
-        WindowGroup { // 3. 窗口组 (iOS 现在的 App 支持多窗口，比如 iPad 分屏)
-            
-            // 👇 4. 这里定义了 App 启动后显示的第一个画面！
-            // 这就相当于 AndroidManifest 里配置了 <intent-filter> 的 Launcher Activity
+        WindowGroup {
             ContentView().environmentObject(manager)
         }
     }

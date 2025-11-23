@@ -8,28 +8,33 @@
 import SwiftUI
 
 struct CardListView: View {
+    // 1. 拿仓库钥匙
+    @EnvironmentObject var manager: DataManager
+    
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // 卡片 1 (蓝紫渐变)
-                    CreditCardView(bankName: "招商银行", type: "运通白金卡", endNum: "8881", colors: [.blue, .purple])
-                    
-                    // 卡片 2 (黑金风格)
-                    CreditCardView(bankName: "浦发银行", type: "超白金", endNum: "1024", colors: [.black, .gray])
-                    
-                    // 卡片 3 (红色喜庆)
-                    CreditCardView(bankName: "中国银行", type: "冬奥主题卡", endNum: "6666", colors: [.red, .orange])
+                    // 2. 变成动态循环
+                    ForEach(manager.cards) { card in
+                        CreditCardView(
+                            bankName: card.bankName,
+                            type: card.type,
+                            endNum: card.endNum,
+                            colors: card.colors
+                        )
+                    }
                 }
                 .padding(.top)
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的卡包")
-            .toolbar {
-                Button(action: {}) {
-                    Image(systemName: "plus")
-                }
-            }
+            // ...
         }
     }
+}
+#Preview {
+    // 👇 补上这一句，给预览环境也注入一个 DataManager
+    CardListView()
+        .environmentObject(DataManager())
 }

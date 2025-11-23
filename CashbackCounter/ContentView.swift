@@ -39,8 +39,7 @@ struct ContentView: View {
     }
 }
 
-
-
 #Preview {
     ContentView()
+        .environmentObject(DataManager()) // 👈 必须加！为了喂饱里面的子页面
 }

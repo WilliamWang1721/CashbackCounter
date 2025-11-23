@@ -1,19 +1,18 @@
-//
-//  BillHomeView.swift
-//  CashbackCounter
-//
-//  Created by Junhao Huang on 11/23/25.
-//
-
 import SwiftUI
 
 struct BillHomeView: View {
-    // 模拟数据
-    let transactions = [
-        Transaction(merchant: "Apple Store", category: "applelogo", amount: 8999, cashbackRate: 0.03, date: "今天", color: .gray),
-        Transaction(merchant: "星巴克", category: "cup.and.saucer.fill", amount: 38, cashbackRate: 0.05, date: "今天", color: .green),
-        Transaction(merchant: "7-Eleven", category: "cart.fill", amount: 125, cashbackRate: 0.01, date: "昨天", color: .orange)
-    ]
+    @EnvironmentObject var manager: DataManager
+    
+    // --- 1. 自动计算总支出 ---
+    // reduce 是一个高阶函数：把数组里的每一项 ($1) 的 amount 加到初始值 0 ($0) 上
+    var totalExpense: Double {
+        manager.transactions.reduce(0) { $0 + $1.amount }
+    }
+    
+    // --- 2. 自动计算总返现 ---
+    var totalCashback: Double {
+        manager.transactions.reduce(0) { $0 + $1.cashbackAmount }
+    }
     
     var body: some View {
         NavigationView {
@@ -22,15 +21,28 @@ struct BillHomeView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // 统计条
+                        
+                        // --- 3. 消失的统计条 (这里加回来了！) ---
+                        // 而且现在它是动态的，数字会随着你记账自动变！
                         HStack(spacing: 15) {
-                            StatBox(title: "本月支出", amount: "¥9,316", icon: "arrow.down.circle.fill", color: .red)
-                            StatBox(title: "累计返现", amount: "¥284.5", icon: "arrow.up.circle.fill", color: .green)
+                            StatBox(
+                                title: "本月支出",
+                                amount: "¥\(String(format: "%.2f", totalExpense))", // 显示真数据
+                                icon: "arrow.down.circle.fill",
+                                color: .red
+                            )
+                            
+                            StatBox(
+                                title: "累计返现",
+                                amount: "¥\(String(format: "%.2f", totalCashback))", // 显示真数据
+                                icon: "arrow.up.circle.fill",
+                                color: .green
+                            )
                         }
                         .padding(.horizontal)
                         .padding(.top)
                         
-                        // 列表头
+                        // --- 列表标题 ---
                         HStack {
                             Text("近期账单")
                                 .font(.headline)
@@ -39,9 +51,9 @@ struct BillHomeView: View {
                         }
                         .padding(.horizontal)
                         
-                        // 交易列表
+                        // --- 交易列表 ---
                         LazyVStack(spacing: 15) {
-                            ForEach(transactions) { item in
+                            ForEach(manager.transactions) { item in
                                 TransactionRow(transaction: item)
                             }
                         }
@@ -49,7 +61,15 @@ struct BillHomeView: View {
                     }
                 }
             }
-            .navigationTitle("账单流水")
+            .navigationTitle("Cashback Counter")
+            .navigationBarTitleDisplayMode(.inline)
+        
         }
     }
+}
+
+// 别忘了给预览也加假数据，不然预览会崩
+#Preview {
+    BillHomeView()
+        .environmentObject(DataManager())
 }
