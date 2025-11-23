@@ -6,15 +6,25 @@
 //
 
 import SwiftUI
-struct Transaction: Identifiable {
-    let id = UUID()
-    let merchant: String
-    let category: Category
-    let amount: Double
-    let date: Date
-    let cardID: UUID
-    let location: Region
-
+import SwiftData // 👈 1. 引入新框架
+@Model
+class Transaction: Identifiable {
+    var merchant: String
+    // Enum 需要遵守 Codable 才能存进 SwiftData (之前我们加过 Codable 了)
+    var category: Category
+    var location: Region
+    var amount: Double
+    var date: Date
+    var cardID: UUID
+    
+    init(merchant: String, category: Category, location: Region, amount: Double, date: Date, cardID: UUID) {
+            self.merchant = merchant
+            self.category = category
+            self.location = location
+            self.amount = amount
+            self.date = date
+            self.cardID = cardID
+        }
     
     var color: Color { category.color }
     var dateString: String {
@@ -36,6 +46,14 @@ enum Region: String, CaseIterable, Codable {
         case .hk: return "🇭🇰"
         case .us: return "🇺🇸"
         case .other: return "🌍"
+        }
+    }
+    var currencySymbol: String {
+        switch self {
+        case .cn: return "¥"
+        case .hk: return "HK$"
+        case .us: return "$"
+        case .other: return "€" // 或者用通用符号 ¤
         }
     }
 }

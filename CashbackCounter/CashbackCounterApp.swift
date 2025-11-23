@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main // 👈 1. 这里的 @main 就相当于 Java 的 public static void main()。
       // 它告诉系统：程序从这里开始跑！
@@ -18,5 +19,6 @@ struct CashbackCounterApp: App { // 2. 这个结构体必须遵守 App 协议
         WindowGroup {
             ContentView().environmentObject(manager)
         }
+        .modelContainer(for: Transaction.self)
     }
 }

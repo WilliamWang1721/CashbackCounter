@@ -1,19 +1,21 @@
 import SwiftUI
+import SwiftData
 
 struct BillHomeView: View {
     @EnvironmentObject var manager: DataManager
+    @Environment(\.modelContext) var context
+    @Query(sort: \Transaction.date, order: .reverse) var dbTransactions: [Transaction]
     
-    // --- 1. 自动计算总支出 ---
+    // 1. 自动计算总支出
     // reduce 是一个高阶函数：把数组里的每一项 ($1) 的 amount 加到初始值 0 ($0) 上
     var totalExpense: Double {
-        manager.transactions.reduce(0) { $0 + $1.amount }
-    }
-    
-    // --- 2. 自动计算总返现 ---
+            dbTransactions.reduce(0) { $0 + $1.amount }
+        }
+        
+    // 2. 计算总返现
     var totalCashback: Double {
-            manager.transactions.reduce(0) { currentTotal, transaction in
-                // 每一笔都问 manager 算一下返现，然后加起来
-                currentTotal + manager.getCashback(for: transaction)
+            dbTransactions.reduce(0) {
+                $0 + CashbackService.calculateCashback(for: $1, in: manager.cards)
             }
         }
     
@@ -56,10 +58,10 @@ struct BillHomeView: View {
                         
                         // --- 交易列表 ---
                         LazyVStack(spacing: 15) {
-                            ForEach(manager.transactions) { item in
-                                TransactionRow(transaction: item)
-                            }
-                        }
+                                         ForEach(dbTransactions) { item in
+                                             TransactionRow(transaction: item)
+                                         }
+                                     }
                         .padding(.horizontal)
                     }
                 }
@@ -67,12 +69,14 @@ struct BillHomeView: View {
             .navigationTitle("Cashback Counter")
             .navigationBarTitleDisplayMode(.inline)
         
+        }.onAppear {
+            // 当页面显示时，尝试加载假数据
+            SampleData.load(context: context, manager: manager)
         }
     }
 }
 
-// 别忘了给预览也加假数据，不然预览会崩
 #Preview {
     BillHomeView()
-        .environmentObject(DataManager())
+        .environmentObject(DataManager()) // 👈 必须加！为了喂饱里面的子页面
 }
