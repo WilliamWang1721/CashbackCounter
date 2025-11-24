@@ -86,6 +86,7 @@ struct AddCardView: View {
             _cardType = State(initialValue: template.type)
             _endNum = State(initialValue: "") // 模板不带尾号
             
+            
             if template.colors.count >= 2 {
                 _color1 = State(initialValue: Color(hex: template.colors[0]))
                 _color2 = State(initialValue: Color(hex: template.colors[1]))
@@ -95,8 +96,41 @@ struct AddCardView: View {
             }
             
             _region = State(initialValue: template.region)
-            _defaultRateStr = State(initialValue: "1.0")
-            _foreignRateStr = State(initialValue: "")
+            let defStr = String(format: "%.1f", template.defaultRate * 1)
+            _defaultRateStr = State(initialValue: defStr.replacingOccurrences(of: ".0", with: ""))
+            if let fr = template.foreignCurrencyRate {
+                let frStr = String(format: "%.1f", fr)
+                _foreignRateStr = State(initialValue: frStr.replacingOccurrences(of: ".0", with: ""))
+            } else {
+                _foreignRateStr = State(initialValue: "")
+            }
+            
+            // 5. ✅ 填充特殊返现率 (从字典里拆出来填给对应的 State)
+                        // 餐饮
+            if let dining = template.specialRate[.dining] {
+                let s = String(format: "%.1f", dining).replacingOccurrences(of: ".0", with: "")
+                _diningRateStr = State(initialValue: s)
+            }
+            // 超市
+            if let grocery = template.specialRate[.grocery] {
+                let s = String(format: "%.1f", grocery).replacingOccurrences(of: ".0", with: "")
+                _groceryRateStr = State(initialValue: s)
+            }
+            // 出行
+            if let travel = template.specialRate[.travel] {
+                let s = String(format: "%.1f", travel).replacingOccurrences(of: ".0", with: "")
+                _travelRateStr = State(initialValue: s)
+            }
+            // 数码
+            if let digital = template.specialRate[.digital] {
+                let s = String(format: "%.1f", digital).replacingOccurrences(of: ".0", with: "")
+                _digitalRateStr = State(initialValue: s)
+            }
+            // 其他
+            if let other = template.specialRate[.other] {
+                let s = String(format: "%.1f", other).replacingOccurrences(of: ".0", with: "")
+                _otherRateStr = State(initialValue: s)
+            }
         }
         // 逻辑 C: 纯新建模式 -> 全部给空值/默认值
         else {
