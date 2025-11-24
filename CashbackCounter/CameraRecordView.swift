@@ -59,8 +59,21 @@ struct CameraRecordView: View {
                     
                     Spacer()
                     
-                    // 右下角：占位符 (为了布局平衡)
-                    Color.clear.frame(width: 60, height: 60)
+                    Button(action: {
+                        // 核心逻辑：
+                        // 1. 确保图片为空 (表示纯文本记账)
+                        selectedImage = nil
+                        // 2. 打开记账页面
+                        showAddSheet = true
+                        }) {
+                            Image(systemName: "square.and.pencil") // ✏️ 记账图标
+                                .font(.largeTitle)
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60) // 保持和左边一样大，对称美
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                    
                 }
                 .padding(.horizontal, 30)
                 .padding(.bottom, 50)
