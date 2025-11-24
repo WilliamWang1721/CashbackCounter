@@ -14,7 +14,7 @@ struct TransactionDetailView: View {
     
     // 获取计算数据
     var cashback: Double {
-        CashbackService.calculateCashback(for: transaction)
+        transaction.cashbackamount
     }
     
     var cardName: String {
@@ -27,6 +27,15 @@ struct TransactionDetailView: View {
     
     var currency: String {
         CashbackService.getCurrency(for: transaction)
+    }
+    var billamount: Double {
+        transaction.billingAmount
+    }
+    var cardregion: String {
+        transaction.card?.issueRegion.currencySymbol ?? ""
+    }
+    var cashbackrate: String {
+        String(format: "%.1f", transaction.rate*100)
     }
     
     var body: some View {
@@ -61,7 +70,7 @@ struct TransactionDetailView: View {
                     Divider()
                     DetailRow(title: "卡片尾号", value: cardNumber)
                     Divider()
-                    DetailRow(title: "消费类别", value: transaction.category.displayName)
+                    DetailRow(title: "入账金额", value: (cardregion+String(format: "%.2f", billamount)))
                     Divider()
                     DetailRow(title: "消费地区", value: "\(transaction.location.icon) \(transaction.location.rawValue)")
                 }
@@ -76,7 +85,7 @@ struct TransactionDetailView: View {
                             Text("本单返现")
                                 .font(.caption)
                                 .foregroundColor(.gray)
-                            Text("\(currency)\(String(format: "%.2f", cashback))")
+                            Text("\(cardregion)\(String(format: "%.2f", cashback))"+"(\(cashbackrate)%)")
                                 .font(.title3)
                                 .fontWeight(.bold)
                                 .foregroundColor(.green)

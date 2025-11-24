@@ -38,4 +38,15 @@ enum Region: String, CaseIterable, Codable {
         case .other: return "€" // 或者用通用符号 ¤
         }
     }
+    var currencyCode: String {
+        switch self {
+        case .cn: return "CNY"
+        case .us: return "USD"
+        case .hk: return "HKD"
+        case .jp: return "JPY"
+        case .nz: return "NZD"
+        case .tw: return "NTD"
+        case .other: return "EUR"
+        }
+    }
 }

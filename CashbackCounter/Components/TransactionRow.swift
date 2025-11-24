@@ -9,65 +9,54 @@ import SwiftUI
 
 struct TransactionRow: View {
     let transaction: Transaction
-    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        HStack(spacing: 15) {
-            // 图标部分 (保持不变)
+        HStack(spacing: 12) {
+            // 1. 左侧图标
             ZStack {
                 Circle()
-                    .fill(transaction.category.color.opacity(0.1))
-                    .frame(width: 50, height: 50)
+                    .fill(transaction.category.color.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                
                 Image(systemName: transaction.category.iconName)
-                    .font(.title3)
+                    .font(.system(size: 20))
                     .foregroundColor(transaction.category.color)
             }
             
-            // --- 左边：商家 + (日期 & 卡片) ---
+            // 2. 中间信息 (商户名 + 卡片名)
             VStack(alignment: .leading, spacing: 4) {
-                            Text(transaction.merchant).font(.headline)
-                            
-                            // 👇 修改：调用 Service，传入 transaction 和 manager.cards
-                            let cardName = CashbackService.getCardName(for: transaction)
-                            Text("\(transaction.dateString) · \(cardName)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-            
-            Spacer()
-            
-            // --- 右边：金额 + (返现金额 & 比例) ---
-            VStack(alignment: .trailing, spacing: 4) {
-                let symbol = CashbackService.getCurrency(for: transaction)
-                Text("- \(symbol)\(String(format: "%.2f", transaction.amount))")
-                                    .font(.system(.body, design: .rounded))
-                                    .fontWeight(.semibold)
-                                
-                // 3. 显示返现
-                let cashback = transaction.cashbackamount
-                                
-                if cashback > 0 {
-                    HStack(spacing: 4) {
-                    Image(systemName: "sparkles").font(.system(size: 10))
-                                        
-                    let rate = CashbackService.getRate(for: transaction)
-                    Text("返 \((rate * 100).formatted(.number.precision(.fractionLength(1))))%")
-                            .font(.system(size: 10, weight: .medium))
-                            .opacity(0.8)
-                                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.green.opacity(0.1))
-                    .foregroundColor(.green)
-                    .cornerRadius(4)
+                Text(transaction.merchant)
+                    .font(.headline)
+                
+                // ✨ 关键修改：显示卡片全称，允许换行
+                if let card = transaction.card {
+                    Text(card.bankName + " " + card.type)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true) // 允许垂直方向换行
+                        .lineLimit(2) // 最多显示2行，防止太长
                 }
             }
+            
+            Spacer() // ✨ 关键修改：用 Spacer 撑开，保证右边对齐
+            
+            // 3. 右侧金额
+            VStack(alignment: .trailing, spacing: 4) {
+                // 消费金额
+                Text("\(transaction.location.currencySymbol)\(String(format: "%.2f", transaction.amount))")
+                    .fontWeight(.bold)
+                
+                // 日期
+                HStack(spacing: 2) {
+                    // 显示交易日期
+                    Text(transaction.dateString)
+                }
+                .font(.caption)
+            }
         }
-        .padding()
-        // ... 背景和阴影代码保持不变 ...
+        .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(15)
-        .shadow(color: colorScheme == .dark ? .clear : .black.opacity(0.02), radius: 5, x: 0, y: 2)
+        .cornerRadius(12)
     }
 }
+
