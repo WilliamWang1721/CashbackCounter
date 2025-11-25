@@ -57,7 +57,7 @@ struct ReceiptFullScreenView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 30))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.black.opacity(0.8))
                             .padding()
                     }
                 }

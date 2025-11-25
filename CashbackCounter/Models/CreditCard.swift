@@ -49,7 +49,7 @@ class CreditCard: Identifiable {
     
     // ... 之前的 getRate 方法保持不变 (记得要把 specialRates 改一下调用方式如果变了) ...
     func getRate(for category: Category, location: Region) -> Double {
-        let categoryRate = specialRates[category] ?? defaultRate
+        let categoryRate = specialRates[category]!
         if location != issueRegion, let foreignRate = foreignCurrencyRate {
             return max(categoryRate, foreignRate)
         }

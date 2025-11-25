@@ -2,52 +2,70 @@ import SwiftUI
 import SwiftData
 
 struct BillHomeView: View {
-    // 1. 拿到数据库上下文 (用来删除)
+    // 1. 拿到数据库上下文
     @Environment(\.modelContext) var context
     
     @Query(sort: \Transaction.date, order: .reverse) var dbTransactions: [Transaction]
     
-    // 2. 控制详情页弹窗
+    // 2. 控制弹窗
     @State private var selectedTransaction: Transaction? = nil
-    
-    // 3. 控制编辑页弹窗
     @State private var transactionToEdit: Transaction?
+    @State private var showDatePicker = false
     
-    // 4. 汇率表 [币种: 对CNY汇率] (例如: ["USD": 0.14])
+    // 3. 筛选状态
+    @State private var selectedDate = Date()
+    @State private var showAll = false // 是否显示全部
+    
+    // 👇👇👇 补回缺失的状态：是否按整年筛选
+    @State private var isWholeYear = false
+    
+    // 4. 汇率表
     @State private var exchangeRates: [String: Double] = [:]
     
-    // --- 计算总支出 (CNY) ---
-    var totalExpense: Double {
-        if exchangeRates.isEmpty { return 0.0 } // 或者简单的累加
+    // 5. 核心筛选逻辑 (升级版)
+    var filteredTransactions: [Transaction] {
+        if showAll { return dbTransactions }
         
-        return dbTransactions.reduce(0) { total, transaction in
-            // A. 获取交易币种 (例如 USD)
-            let code = transaction.card?.issueRegion.currencyCode ?? "CNY"
-            // B. 获取该币种对 CNY 的汇率 (例如 0.14)
-            let rate = exchangeRates[code] ?? 1.0
-            // C. 换算: 美元金额 / 汇率 = 人民币金额
-            let amountInCNY = transaction.billingAmount / rate
-            
-            return total + amountInCNY
+        return dbTransactions.filter { t in
+            if isWholeYear {
+                // 👉 按“年”筛选 (只要年份相同)
+                return Calendar.current.isDate(t.date, equalTo: selectedDate, toGranularity: .year)
+            } else {
+                // 👉 按“月”筛选 (年份和月份都相同)
+                return Calendar.current.isDate(t.date, equalTo: selectedDate, toGranularity: .month)
+            }
         }
     }
     
-    // --- 计算总返现 (CNY) ---
+    // 辅助：按钮显示的文字
+    var dateButtonText: String {
+        if isWholeYear {
+            // 显示 "2025年 全年"
+            return selectedDate.formatted(.dateTime.year()) + " 全年"
+        } else {
+            // 显示 "2025年 11月"
+            return selectedDate.formatted(.dateTime.year().month())
+        }
+    }
+    
+    // 计算总支出
+    var totalExpense: Double {
+        if exchangeRates.isEmpty { return 0.0 }
+        return filteredTransactions.reduce(0) { total, t in
+            let code = t.card?.issueRegion.currencyCode ?? "CNY"
+            let rate = exchangeRates[code] ?? 1.0
+            return total + (t.billingAmount / rate)
+        }
+    }
+    
+    // 计算总返现
     var totalCashback: Double {
         if exchangeRates.isEmpty { return 0.0 }
-        
-        return dbTransactions.reduce(0) { total, transaction in
-            // A. 先算出原币种返现 (例如返 $10)
-            let cashbackForeign = transaction.cashbackamount
-            
-            // B. 获取汇率
-            let code = transaction.card?.issueRegion.currencyCode ?? "CNY"
+        return filteredTransactions.reduce(0) { total, t in
+            let cb = CashbackService.calculateCashback(for: t)
+            let code = t.card?.issueRegion.currencyCode ?? "CNY"
             let rate = exchangeRates[code] ?? 1.0
-            
-            // C. 换算成人民币
-            let cashbackInCNY = cashbackForeign / rate
-            
-            return total + cashbackInCNY
+            return total + (cb / rate)
         }
     }
     
@@ -59,57 +77,75 @@ struct BillHomeView: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         
-                        // --- 统计条 ---
+                        // 1. 统计条 (标题动态变化)
                         HStack(spacing: 15) {
                             StatBox(
-                                title: "本月支出 (CNY)",
-                                // 如果汇率还没好，显示计算中
+                                title: showAll ? "总支出" : (isWholeYear ? "本年支出" : "本月支出"),
                                 amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalExpense))",
-                                icon: "arrow.down.circle.fill",
-                                color: .red
+                                icon: "arrow.down.circle.fill", color: .red
                             )
-                            
                             StatBox(
-                                title: "累计返现 (CNY)",
+                                title: showAll ? "总返现" : (isWholeYear ? "本年返现" : "本月返现"),
                                 amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalCashback))",
-                                icon: "arrow.up.circle.fill",
-                                color: .green
+                                icon: "arrow.up.circle.fill", color: .green
                             )
                         }
-                        .padding(.horizontal)
-                        .padding(.top)
+                        .padding(.horizontal).padding(.top)
                         
-                        // --- 列表标题 ---
+                        // 2. 控制栏
                         HStack {
-                            Text("近期账单")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
+                            Text(showAll ? "全部账单" : (isWholeYear ? "年度账单" : "月度账单"))
+                                .font(.headline).foregroundColor(.secondary)
+                            
                             Spacer()
+                            
+                            HStack(spacing: 10) {
+                                // "显示全部" 按钮
+                                Button(action: { withAnimation { showAll = true } }) {
+                                    Text("全部")
+                                        .font(.subheadline)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(showAll ? Color.blue : Color.clear)
+                                        .foregroundColor(showAll ? .white : .blue)
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue, lineWidth: 1))
+                                }
+                                
+                                // "选择日期" 按钮
+                                Button(action: { showDatePicker = true }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "calendar")
+                                        Text(dateButtonText) // 👈 使用动态文字
+                                    }
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(showAll ? Color.clear : Color.blue)
+                                    .foregroundColor(showAll ? .blue : .white)
+                                    .cornerRadius(8)
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue, lineWidth: 1))
+                                }
+                            }
                         }
                         .padding(.horizontal)
                         
-                        // --- 交易列表 ---
+                        // 3. 列表
                         LazyVStack(spacing: 15) {
-                            ForEach(dbTransactions) { item in
+                            ForEach(filteredTransactions) { item in
                                 TransactionRow(transaction: item)
-                                    // 1. 单击 -> 查看详情
-                                    .onTapGesture {
-                                        selectedTransaction = item
-                                    }
-                                    // 2. 长按 -> 弹出菜单
+                                    .onTapGesture { selectedTransaction = item }
                                     .contextMenu {
-                                        Button {
-                                            transactionToEdit = item
-                                        } label: {
-                                            Label("编辑", systemImage: "pencil")
-                                        }
-                                        
-                                        Button(role: .destructive) {
-                                            context.delete(item)
-                                        } label: {
-                                            Label("删除", systemImage: "trash")
-                                        }
+                                        Button { transactionToEdit = item } label: { Label("编辑", systemImage: "pencil") }
+                                        Button(role: .destructive) { context.delete(item) } label: { Label("删除", systemImage: "trash") }
                                     }
+                            }
+                            
+                            if filteredTransactions.isEmpty {
+                                ContentUnavailableView(
+                                    "暂无账单",
+                                    systemImage: "list.bullet.clipboard",
+                                    description: Text("该时间段内没有交易记录")
+                                )
+                                .padding(.top, 40)
                             }
                         }
                         .padding(.horizontal)
@@ -118,31 +154,35 @@ struct BillHomeView: View {
             }
             .navigationTitle("Cashback Counter")
             .navigationBarTitleDisplayMode(.inline)
-            
-            // 弹窗 1: 详情页
-            .sheet(item: $selectedTransaction) { item in
-                TransactionDetailView(transaction: item)
-                    .presentationDetents([.large])
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !filteredTransactions.isEmpty,
+                       let csvURL = filteredTransactions.exportCSVFile() {
+                        ShareLink(item: csvURL) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
             }
-            
-            // 弹窗 2: 编辑页
+            // 弹窗绑定
+            .sheet(item: $selectedTransaction) { item in
+                TransactionDetailView(transaction: item).presentationDetents([.large])
+            }
             .sheet(item: $transactionToEdit) { item in
                 AddTransactionView(transaction: item)
             }
+            // 👇👇👇 修复：绑定 MonthYearPicker 并传入 isWholeYear
+            .sheet(isPresented: $showDatePicker) {
+                MonthYearPicker(date: $selectedDate, isWholeYear: $isWholeYear)
+                    .presentationDetents([.height(300)])
+                    .onDisappear { withAnimation { showAll = false } }
+            }
         }
-        // 👇👇👇 核心：页面显示时拉取汇率和假数据
         .task {
-            
-            // 2. 拉取汇率 (后台进行)
             do {
                 let rates = await CurrencyService.getRates(base: "CNY")
-
-                await MainActor.run {
-                    self.exchangeRates = rates
-                }
-            } catch {
-                print("汇率获取失败")
-            }
+                await MainActor.run { self.exchangeRates = rates }
+            } catch { print("汇率获取失败") }
         }
     }
 }

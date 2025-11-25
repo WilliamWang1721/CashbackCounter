@@ -96,8 +96,9 @@ struct AddCardView: View {
             }
             
             _region = State(initialValue: template.region)
-            let defStr = String(format: "%.1f", template.defaultRate * 1)
+            let defStr = String(format: "%.1f", template.defaultRate)
             _defaultRateStr = State(initialValue: defStr.replacingOccurrences(of: ".0", with: ""))
+            
             if let fr = template.foreignCurrencyRate {
                 let frStr = String(format: "%.1f", fr)
                 _foreignRateStr = State(initialValue: frStr.replacingOccurrences(of: ".0", with: ""))
@@ -274,17 +275,19 @@ struct AddCardView: View {
         var foreignRate: Double? = nil
         if !foreignRateStr.isEmpty {
             foreignRate = (Double(foreignRateStr) ?? 0) / 100.0
+        }else{
+            foreignRate = 0
         }
 
         let c1Hex = color1.toHex() ?? "0000FF"
         let c2Hex = color2.toHex() ?? "000000"
         
         var specialRates: [Category: Double] = [:]
-        if let rate = Double(diningRateStr) { specialRates[.dining] = rate / 100.0 }
-        if let rate = Double(groceryRateStr) { specialRates[.grocery] = rate / 100.0 }
-        if let rate = Double(travelRateStr) { specialRates[.travel] = rate / 100.0 }
-        if let rate = Double(digitalRateStr) { specialRates[.digital] = rate / 100.0 }
-        if let rate = Double(otherRateStr) { specialRates[.other] = rate / 100.0 }
+        if let rate = Double(diningRateStr) { specialRates[.dining] = rate / 100.0 }else{specialRates[.dining] = 0}
+        if let rate = Double(groceryRateStr) { specialRates[.grocery] = rate / 100.0 }else{specialRates[.grocery] = 0}
+        if let rate = Double(travelRateStr) { specialRates[.travel] = rate / 100.0 }else{specialRates[.travel] = 0}
+        if let rate = Double(digitalRateStr) { specialRates[.digital] = rate / 100.0 }else{specialRates[.digital] = 0}
+        if let rate = Double(otherRateStr) { specialRates[.other] = rate / 100.0 }else{specialRates[.other] = 0}
         
         if let existingCard = cardToEdit {
             // 👉 场景 A: 编辑模式 (直接修改现有对象，不需要 insert)
@@ -305,7 +308,7 @@ struct AddCardView: View {
                 endNum: endNum,
                 colorHexes: [c1Hex, c2Hex],
                 defaultRate: defaultRate,
-                specialRates: specialRates, // 暂时留空
+                specialRates: specialRates,
                 issueRegion: region,
                 foreignCurrencyRate: foreignRate
             )
