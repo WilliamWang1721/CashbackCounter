@@ -275,11 +275,23 @@ struct AddTransactionView: View {
             if let t = transactionToEdit {
                 t.merchant = merchant
                 t.amount = amountDouble
-                t.billingAmount = billingDouble
-                t.category = selectedCategory
+
                 t.location = location
                 t.date = date
-                t.card = card
+                if t.card != card || t.billingAmount != billingDouble || t.category != selectedCategory {
+                    
+                    t.card = card // 更新卡片
+                    t.billingAmount = billingDouble
+                    t.category = selectedCategory
+                    
+                    // 重新计算费率
+                    let newRate = card.getRate(for: selectedCategory, location: location)
+                    t.rate = newRate
+                    
+                    // 重新计算返现额
+                    t.cashbackamount = billingDouble * newRate
+                }
+                
                 if let img = imageData { t.receiptData = img }
             } else {
                 let newTransaction = Transaction(
@@ -310,7 +322,7 @@ struct AddTransactionView: View {
         let targetCurrency = card.issueRegion.currencyCode
         
         // 如果币种一样，不需要查汇率
-        if sourceCurrency == targetCurrency || sourceCurrency=="NTD" || sourceCurrency == "EUR" {
+        if sourceCurrency == targetCurrency || sourceCurrency=="TWD" || sourceCurrency == "EUR" {
             billingAmountStr = amount
             return
         }

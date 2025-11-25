@@ -45,8 +45,23 @@ enum Region: String, CaseIterable, Codable {
         case .hk: return "HKD"
         case .jp: return "JPY"
         case .nz: return "NZD"
-        case .tw: return "NTD"
+        case .tw: return "TWD"
         case .other: return "EUR"
         }
     }
+    var recognitionLanguages: [String] {
+            switch self {
+            case .jp:
+            // 日本：必须把 ja-JP 放第一，否则片假名容易丢
+                return ["ja-JP", "en-US", "zh-Hans"]
+                
+            case .cn, .hk, .tw:
+            // 中文区：繁简中优先
+                return ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]
+                
+            case .us, .nz, .other:
+            // 英语区：英文优先
+                return ["en-US", "zh-Hans", "ja-JP"]
+            }
+        }
 }
