@@ -41,9 +41,7 @@ struct ContentView: View {
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: Transaction.self, CreditCard.self, configurations: config)
-    
-    SampleData.load(context: container.mainContext)
-    
+        
     return ContentView()
         .modelContainer(container)
 }
