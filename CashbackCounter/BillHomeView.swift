@@ -15,6 +15,10 @@ struct BillHomeView: View {
     // 3. 筛选状态
     @State private var selectedDate = Date()
     @State private var showAll = false // 是否显示全部
+    // 👇 2. 新增：控制趋势图弹窗
+    @Query var cards: [CreditCard]
+    @State private var showTrendSheet = false   // 控制“返现”弹窗
+    @State private var showExpenseSheet = false // 👈 新增：控制“支出”弹窗
     
     // 👇👇👇 补回缺失的状态：是否按整年筛选
     @State private var isWholeYear = false
@@ -79,16 +83,42 @@ struct BillHomeView: View {
                         
                         // 1. 统计条 (标题动态变化)
                         HStack(spacing: 15) {
-                            StatBox(
-                                title: showAll ? "总支出" : (isWholeYear ? "本年支出" : "本月支出"),
-                                amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalExpense))",
-                                icon: "arrow.down.circle.fill", color: .red
-                            )
-                            StatBox(
-                                title: showAll ? "总返现" : (isWholeYear ? "本年返现" : "本月返现"),
-                                amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalCashback))",
-                                icon: "arrow.up.circle.fill", color: .green
-                            )
+                            Button(action: {
+                                    showExpenseSheet = true // 点击触发支出弹窗
+                            }) {
+                                StatBox(
+                                    title: showAll ? "总支出" : (isWholeYear ? "本年支出" : "本月支出"),
+                                    amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalExpense))",
+                                    icon: "arrow.down.circle.fill", color: .red
+                                )
+                                .overlay(
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.gray.opacity(0.5))
+                                        .padding(.trailing, 10),
+                                    alignment: .trailing
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            // 👇 3. 修改：给“总返现” StatBox 包裹一个 Button
+                            Button(action: {
+                                showTrendSheet = true // 点击触发弹窗
+                            }) {
+                                StatBox(
+                                    title: showAll ? "总返现" : (isWholeYear ? "本年返现" : "本月返现"),
+                                    amount: exchangeRates.isEmpty ? "..." : "¥\(String(format: "%.2f", totalCashback))",
+                                    icon: "arrow.up.circle.fill", color: .green
+                                )
+                                // 添加一个小箭头暗示可以点击 (可选)
+                                .overlay(
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.gray.opacity(0.5))
+                                        .padding(.trailing, 10),
+                                    alignment: .trailing
+                                )
+                            }
+                            .buttonStyle(.plain) // 去掉按钮默认的点击变灰效果，保持 StatBox 原样
                         }
                         .padding(.horizontal).padding(.top)
                         
@@ -176,6 +206,28 @@ struct BillHomeView: View {
                 MonthYearPicker(date: $selectedDate, isWholeYear: $isWholeYear)
                     .presentationDetents([.height(300)])
                     .onDisappear { withAnimation { showAll = false } }
+            }
+            .sheet(isPresented: $showTrendSheet) {
+                TrendAnalysisView(
+                    transactions: dbTransactions,
+                    cards: cards,
+                    exchangeRates: exchangeRates,
+                    type: .cashback // 👈 指定为返现模式 (绿色)
+                )
+                .presentationDetents([.large, .large])
+                .presentationDragIndicator(.visible)
+            }
+
+            // 👇 2. 新增：支出分析弹窗
+            .sheet(isPresented: $showExpenseSheet) {
+                TrendAnalysisView(
+                    transactions: dbTransactions,
+                    cards: cards,
+                    exchangeRates: exchangeRates,
+                    type: .expense // 👈 指定为支出模式 (红色)
+                )
+                .presentationDetents([.large, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .task {
