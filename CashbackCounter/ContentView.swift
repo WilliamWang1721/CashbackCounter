@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+
 // --- 2. 主入口 (包含底部导航栏) ---
 struct ContentView: View {
     // 选中的 Tab 索引
@@ -12,7 +13,6 @@ struct ContentView: View {
             // --- 左边：账单页 ---
             BillHomeView()
                 .tabItem {
-                    // 只有选中时才变实心图标，更有质感
                     Image(systemName: selectedTab == 0 ? "doc.text.image.fill" : "doc.text.image")
                     Text("账单")
                 }
@@ -33,15 +33,16 @@ struct ContentView: View {
                     Text("卡包")
                 }
                 .tag(2)
+            
+            // --- ✨ 新增：设置页 ---
+            SettingsView()
+                .tabItem {
+                    // 选中时变成实心齿轮
+                    Image(systemName: selectedTab == 3 ? "gearshape.fill" : "gearshape")
+                    Text("设置")
+                }
+                .tag(3)
         }
         .tint(.blue) // 设置底部选中时的颜色 (Apple 蓝)
     }
-}
-
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Transaction.self, CreditCard.self, configurations: config)
-        
-    return ContentView()
-        .modelContainer(container)
 }

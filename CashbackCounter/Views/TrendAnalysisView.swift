@@ -9,8 +9,8 @@ enum TrendType {
     
     var title: String {
         switch self {
-        case .expense: return "支出"
-        case .cashback: return "返现"
+        case .expense: return String(localized:"支出")
+        case .cashback: return String(localized:"返现")
         }
     }
     
