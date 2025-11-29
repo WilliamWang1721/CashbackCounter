@@ -274,6 +274,9 @@
         }
       }
     },
+    "Version %@" : {
+
+    },
     "Year" : {
       "localizations" : {
         "en" : {
