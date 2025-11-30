@@ -345,10 +345,15 @@ struct AddTransactionView: View {
     }
     func updateBillingAmount() {
         guard let amountDouble = Double(amount) else { return }
-        
+
+        guard cards.indices.contains(selectedCardIndex) else {
+            billingAmountStr = amount
+            return
+        }
+
         // 1. 获取消费地货币 (比如 JPY)
         let sourceCurrency = location.currencyCode
-        
+
         // 2. 获取卡片货币 (比如 USD)
         let card = cards[selectedCardIndex]
         let targetCurrency = card.issueRegion.currencyCode
