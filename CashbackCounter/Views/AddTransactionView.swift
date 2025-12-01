@@ -27,9 +27,10 @@ struct AddTransactionView: View {
     @State private var location: Region = .cn
     @State private var billingAmountStr: String = ""
     @State private var receiptImage: UIImage?
-    
+
     // 👇 新增：控制 AI 分析的加载状态
     @State private var isAnalyzing: Bool = false
+    @EnvironmentObject private var aiAvailability: AppleIntelligenceAvailability
     
     // --- 3. 自定义初始化 ---
     init(transaction: Transaction? = nil, image: UIImage? = nil, onSaved: (() -> Void)? = nil) {
@@ -68,7 +69,7 @@ struct AddTransactionView: View {
                 // --- 第一组：消费详情 ---
                 Section(header: Text("消费详情")) {
                     TextField("商户名称 (例如：星巴克)", text: $merchant)
-                    
+
                     HStack {
                         Text(location.currencySymbol)
                             .fontWeight(.bold)
@@ -87,11 +88,17 @@ struct AddTransactionView: View {
                             .tag(c)
                         }
                     }
-                    
+
                     Picker("消费地区", selection: $location) {
                         ForEach(Region.allCases, id: \.self) { r in
                             Text("\(r.icon) \(r.rawValue)").tag(r)
                         }
+                    }
+                }
+
+                if !aiAvailability.isSupported {
+                    Section {
+                        Label("Apple Intelligence 当前不可用，已切换为手动填写模式。", systemImage: "info.circle")
                     }
                 }
                 
@@ -224,10 +231,11 @@ struct AddTransactionView: View {
     // --- 4. 抽离出 AI 分析逻辑 ---
     func analyzeReceipt() {
         guard let image = receiptImage else { return }
-        
+        guard aiAvailability.isSupported else { return }
+
         // 避免重复分析 (比如编辑模式进来已有数据)
         if !merchant.isEmpty || !amount.isEmpty { return }
-        
+
         isAnalyzing = true // 开始转圈
         
         Task {
