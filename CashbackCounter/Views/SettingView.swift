@@ -71,6 +71,7 @@ struct SettingsView: View {
                     Picker(selection: $userLanguage, label: Label("语言设置", systemImage: "globe")) {
                         Text("跟随系统").tag("system")
                         Text("简体中文").tag("zh-Hans")
+                        Text("繁體中文").tag("zh-Hant")
                         Text("English").tag("en")
                     }
                 }
