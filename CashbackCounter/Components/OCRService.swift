@@ -69,7 +69,7 @@ struct OCRService {
         if upperText.contains("HKD") || text.contains("HK$") { return .hk }
         if upperText.contains("TWD") || upperText.contains("NT$") { return .tw }
         if upperText.contains("NZD") { return .nz }
-        if upperText.contains("CNY") || upperText.contains("RMB") { return .cn }
+        if upperText.contains("CNY") || upperText.contains("RMB") || text.contains("人民币"){ return .cn }
         if upperText.contains("USD") { return .us }
         
         // 2. 弱特征：看地名或特殊符号 (如果货币没找到)

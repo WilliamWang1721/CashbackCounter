@@ -2,6 +2,7 @@ import AppIntents
 import SwiftUI
 import UIKit
 import SwiftData
+import UniformTypeIdentifiers
 import Foundation
 
 /// 通过短信文本添加交易的意图
@@ -16,25 +17,43 @@ struct AddTransactionFromSMSIntent: AppIntent {
       requestValueDialog: IntentDialog("请粘贴信用卡短信内容")  // 提示用户输入内容
     )
     var smsText: String
-
-    @Environment(\.modelContext) private var modelContext
-    @Dependency var availableCards: [CreditCard]
     
+    static var parameterSummary: some ParameterSummary {
+        Summary("解析短信文本 \(\.$smsText)")
+    }
+
+    private static let sharedModelContainer: ModelContainer = {
+        do {
+            return try ModelContainer(for: Transaction.self, CreditCard.self)
+        } catch {
+            fatalError("Failed to create shared model container: \(error)")
+        }
+    }()
+
     @MainActor
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        
+        let modelContext = ModelContext(Self.sharedModelContainer)
+        
+        
+        let textToParse = smsText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !textToParse.isEmpty else {
+                    throw NSError(domain: "AddTransactionFromSMSIntent", code: 0, userInfo: [NSLocalizedDescriptionKey: "请提供短信文本"])
+                }
         // 在主线程上创建解析器并调用 parse()
         let parser = ReceiptParser()
-        let metadata = try await parser.parse(text: smsText)
+        let metadata = try await parser.SMSparse(text: textToParse)
 
         // 核心字段检查
         guard let merchant = metadata.merchant,
               let amount = metadata.totalAmount,
+              let detectedRegion = OCRService.simpleInferRegion(from: textToParse),
               let category = metadata.category else {
             throw NSError(domain: "AddTransactionFromSMSIntent", code: 1, userInfo: [NSLocalizedDescriptionKey: "缺少商户、金额或类别信息"])
         }
 
         // 将日期字符串转换为 Date，不存在则默认今天
-        let date = metadata.dateString?.toDate() ?? Date()
+        let date = Date()
 
         // 根据 currency 推断 Region
         let region: Region
@@ -48,7 +67,7 @@ struct AddTransactionFromSMSIntent: AppIntent {
         default:                                          region = .other
         }
 
-        // 根据尾号匹配信用卡（可选）
+        let availableCards = try modelContext.fetch(FetchDescriptor<CreditCard>())
         let selectedCard: CreditCard? = {
             if let last4 = metadata.cardLast4 {
                 return availableCards.first { $0.endNum == last4 }
@@ -69,7 +88,7 @@ struct AddTransactionFromSMSIntent: AppIntent {
         let newTransaction = Transaction(
             merchant: merchant,
             category: category,
-            location: region,
+            location: detectedRegion,
             amount: amount,
             date: date,
             card: selectedCard,
@@ -80,6 +99,6 @@ struct AddTransactionFromSMSIntent: AppIntent {
         modelContext.insert(newTransaction)
         try modelContext.save()
         // 返回意图执行结果，系统会在快捷指令中显示“完成”
-        return .result()
+        return .result(dialog: "已成功添加账单：\(merchant) – ¥\(amount)")
     }
 }
