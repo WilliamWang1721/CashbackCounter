@@ -48,6 +48,27 @@ final class ReceiptParser {
         "- Infer currency from symbols (¥, $, JPY) or location (e.g. Tokyo -> JPY)." // 👈 提示它根据东京推断日元
         "- If a value is missing, leave it nil."
     }
+    private let SMSinstructions = Instructions{
+        "You are an expert receipt data extractor."
+        
+        "Your job is to analyze the OCR text and extract key details into a structure."
+        "If you are not sure about the result, return nil for the missing field."
+        
+        "CRITICAL RULES FOR MERCHANT NAME extraction:"
+        "- You can use Chinese, Japanese, English to get the MERCHANT NAME"
+        
+        "CRITICAL RULES FOR AMOUNT extraction:"
+        // 1. 告诉它找“实付”
+        "- You must extract the FINAL PAID amount (实付金额/合计/Total)."
+        
+        "CRITICAL RULES FOR CATEGORIZATION:"
+        "- Analyze the merchant name and items purchased."
+        "- 'dining': Restaurants, Cafes, Starbucks, Izakaya (居酒屋), Ramen (ラーメン)." // 👈 新增：居酒屋/拉面
+        "- 'grocery': Supermarkets, 7-Eleven, Lawson, FamilyMart, Daily necessities." // 👈 新增：日本常见便利店
+        "- 'travel': Uber, Taxi, Flights, Hotels, Suica, Pasmo, Shinkansen (新幹線)." // 👈 新增：西瓜卡/新干线
+        "- 'digital': Electronics, Apple Store, Yodobashi, Bic Camera." // 👈 新增：友都八喜/Bic Camera
+        "- 'other': Anything that doesn't fit above."
+    }
     
     init() {}
     
@@ -67,4 +88,20 @@ final class ReceiptParser {
             
         return response.content
         }
-    }
+    func SMSparse(text: String) async throws -> ReceiptMetadata {
+            
+            // 👇👇👇 核心修改：每次调用 parse 时，创建一个全新的 session！
+            // 这样每次都是“第一次”，没有历史包袱
+            let session = LanguageModelSession(instructions: SMSinstructions)
+            
+            let response = try await session.respond(
+                generating: ReceiptMetadata.self
+            ) {
+                "Analyze this receipt text:"
+                text
+            }
+            
+        return response.content
+        }
+    
+}

@@ -31,6 +31,9 @@ struct AddTransactionView: View {
     // 👇 新增：控制 AI 分析的加载状态
     @State private var isAnalyzing: Bool = false
     @EnvironmentObject private var aiAvailability: AppleIntelligenceAvailability
+    @State private var showFullImage = false
+    @State private var showImagePicker: Bool = false
+
     
     // --- 3. 自定义初始化 ---
     init(transaction: Transaction? = nil, image: UIImage? = nil, onSaved: (() -> Void)? = nil) {
@@ -102,9 +105,9 @@ struct AddTransactionView: View {
                     }
                 }
                 
-                // --- 第二组：收据图片预览 + 加载状态 ---
-                if let image = receiptImage {
-                    Section(header: Text("收据凭证")) {
+                // --- 第二组：收据图片预览 + 上传/删除  ---
+                Section(header: Text("收据凭证")) {
+                    if let image = receiptImage {
                         ZStack {
                             Image(uiImage: image)
                                 .resizable()
@@ -112,7 +115,9 @@ struct AddTransactionView: View {
                                 .frame(maxHeight: 200)
                                 .cornerRadius(10)
                                 .opacity(isAnalyzing ? 0.5 : 1.0) // 分析时变暗
-                            
+                                .onTapGesture {
+                                    showFullImage = true
+                                }
                             // 👇 分析时显示转圈圈
                             if isAnalyzing {
                                 ProgressView("AI 分析中...")
@@ -121,14 +126,42 @@ struct AddTransactionView: View {
                                     .cornerRadius(10)
                             }
                         }
+                        .sheet(isPresented: $showFullImage){
+                            ReceiptFullScreenView(image: image)
+                            // 可选：显示下拉指示条，提示用户可以下拉
+                                .presentationDragIndicator(.visible)
+                        }
+                        Button(role: .destructive) {
+                            receiptImage = nil
+                        } label: {
+                            Label("删除图片", systemImage: "trash")
+                        }
+                        
+                        Button {
+                            showImagePicker = true
+                        } label: {
+                            Label("重新上传", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    } else {
+                        Button {
+                            showImagePicker = true
+                        } label: {
+                            Label("上传收据图片", systemImage: "photo.on.rectangle")
+                        }
+                        
                     }
                 }
+            
                 
                 // --- 第三组：支付方式 ---
                 Section(header: Text("支付方式")) {
-                    Picker("选择信用卡", selection: $selectedCardIndex) {
-                        ForEach(0..<cards.count, id: \.self) { index in
-                            Text(cards[index].bankName + " " + cards[index].type).tag(index)
+                    if cards.isEmpty {
+                        Text("请先添加信用卡").foregroundColor(.secondary)
+                    } else {
+                        Picker("选择信用卡", selection: $selectedCardIndex) {
+                            ForEach(0..<cards.count, id: \.self) { index in
+                                Text(cards[index].bankName + " " + cards[index].type).tag(index)
+                            }
                         }
                     }
                     
@@ -197,7 +230,7 @@ struct AddTransactionView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { saveTransaction() }
-                        .disabled(merchant.isEmpty || amount.isEmpty)
+                        .disabled(merchant.isEmpty || amount.isEmpty || cards.isEmpty)
                 }
             }
             // ⚡️ 修正卡片索引
@@ -225,6 +258,9 @@ struct AddTransactionView: View {
             .onChange(of: location) { updateBillingAmount() }
             .onChange(of: selectedCardIndex) { updateBillingAmount() }
             .scrollDismissesKeyboard(.interactively)
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(selectedImage: $receiptImage, sourceType: .photoLibrary)
+            }
         }
     }
     
@@ -355,6 +391,15 @@ struct AddTransactionView: View {
         guard let amountDouble = Double(amount) else { return }
 
         let sourceCurrency = location.currencyCode
+        guard cards.indices.contains(selectedCardIndex) else {
+            billingAmountStr = amount
+            return
+        }
+
+        // 1. 获取消费地货币 (比如 JPY)
+        let sourceCurrency = location.currencyCode
+
+        // 2. 获取卡片货币 (比如 USD)
         let card = cards[selectedCardIndex]
         let targetCurrency = card.issueRegion.currencyCode
 
