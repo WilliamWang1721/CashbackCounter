@@ -13,73 +13,149 @@ enum CapPeriod: Codable {
     case monthly
 }
 
-@Model // 👈 1. 变身数据库表
+@Model
 class CreditCard: Identifiable {
-    // 自动生成的主键，不需要手动 id 了
+    
+    // MARK: - 基本信息
     
     var bankName: String
-    var type: String
-    var endNum: String
-    var repaymentDay: Int = 0
-    var isRemindOpen: Bool = true // 默认为 true (直接开启)
     
-    // ⚠️ 2. 颜色处理：数据库存 Hex 字符串，App 用 Color
+    /// 卡组织（例如：Visa、Mastercard）- 新版字段
+    var cardOrganization: CardOrganization?
+    
+    /// 卡等级（例如：白金卡、无限卡）- 新版字段
+    var cardLevel: CardLevel?
+    
+    /// 卡片尾号
+    var endNum: String
+    
+    /// 还款日
+    var repaymentDay: Int = 0
+    
+    /// 是否开启还款提醒
+    var isRemindOpen: Bool = true
+    
+    // MARK: - 旧版卡面颜色（保留兼容）
+    /// 卡面颜色 Hex 值数组（用于渐变）
     var colorHexes: [String]
-    @Transient // 告诉数据库不要存这个属性，这是算出来的
+    
+    @Transient
     var colors: [Color] {
         return colorHexes.map { Color(hex: $0) }
     }
     
+    // MARK: - 新版卡面图片
+    /// 自定义卡面图片数据
+    @Attribute(.externalStorage) var cardImageData: Data?
+    
+    // MARK: - 旧版卡种类型（保留兼容）
+    /// 卡种类型字符串（如 "Visa 白金卡"）
+    /// 新版本中由 cardOrganization + cardLevel 计算得出
+    private var _type: String?
+    
+    /// 卡种类型的显示名称
+    var type: String {
+        get {
+            // 优先使用新版字段组合
+            if let org = cardOrganization, let level = cardLevel {
+                return "\(org.displayName) \(level.displayName)"
+            }
+            // 兼容旧版本
+            return _type ?? "未知卡种"
+        }
+        set {
+            _type = newValue
+        }
+    }
+    
+    // MARK: - 返现率设置
+    
+    /// 基础返现率（例如：0.01 表示 1%）
     var defaultRate: Double
-    // 3. 字典处理：SwiftData 对字典支持有限，但 Category 是 Codable 的，通常可以直接存。
-    // 如果这里报错，我们需要换成 JSON String。目前先尝试直接存。
+    
+    /// 特殊类别返现率（加成部分，例如：餐饮额外 2%）
     var specialRates: [Category: Double]
     
+    /// 发卡地区
     var issueRegion: Region
+    
+    /// 境外消费返现率（旧版字段，保留兼容）
     var foreignCurrencyRate: Double?
-
-    // 记录该卡是否来源于某个模板，便于模板更新时同步规则
+    
+    /// 模板来源标识（用于模板更新同步）
     var templateKey: String?
     
-    // 👇👇👇 1. 修改上限属性
-        
-    // A. 基础返现上限 (双轨制：分本币/外币)
-    // 0 代表无上限
+    // MARK: - 费用相关（新版字段）
+    
+    /// 外币交易兑换费（Foreign Transaction Fee）百分比
+    var ftf: Double = 0.0
+    
+    /// 跨境港币交易费（Cross-Border HKD Fee）百分比
+    var cbf: Double = 0.0
+    
+    /// FTF 免收币种（存 currencyCode，例如 "USD"）
+    /// 规则：**选中的币种不收 FTF，其余币种都收 FTF**
+    var ftfExceptCurrencyCodes: [String] = []
+    
+    // MARK: - 返现上限设置
+    
+    /// 本币基础返现上限（旧版字段）
     var localBaseCap: Double
+    
+    /// 外币基础返现上限（旧版字段）
     var foreignBaseCap: Double
     
-    // 返现上限结算周期：按年 / 按月
+    /// 返现上限结算周期（旧版字段）
     var capPeriod: CapPeriod
-        
-    // B. 类别加成上限 (共用制：不分地区，只看类别)
-    // Key: 消费类别, Value: 该类别在一个结算周期(capPeriod)内的总加成上限
-    var categoryCaps: [Category: Double]
-        
     
-    // 👇 4. 建立反向关系 (可选)：这张卡关联了哪些交易？
-    // 当你删卡时，关联的交易怎么办？.nullify 意思是把交易里的卡变成空，保留交易记录
+    /// 基础返现月度上限（新版字段，nil 或 0 表示无上限）
+    var monthlyBaseCap: Double?
+    
+    /// 基础返现年度上限（新版字段，nil 或 0 表示无上限）
+    var yearlyBaseCap: Double?
+    
+    /// 类别加成上限（Key: 消费类别, Value: 该类别的上限）
+    var categoryCaps: [Category: Double]
+    
+    /// 多返现条件支持（用于存储多个不同场景下的返现规则）
+    var baseCashbackConditionsData: Data?
+    
+    // MARK: - 关联关系
+    
+    /// 关联的交易记录（删除卡片时，交易的 card 字段会被设为 nil）
     @Relationship(deleteRule: .nullify, inverse: \Transaction.card)
     var transactions: [Transaction]?
     
-    init(bankName: String,
-            type: String,
-            endNum: String,
-            colorHexes: [String],
-            defaultRate: Double,
-            specialRates: [Category: Double],
-            issueRegion: Region,
-            foreignCurrencyRate: Double? = nil,
-            templateKey: String? = nil,
-            // 新参数
-            localBaseCap: Double = 0,
-            foreignBaseCap: Double = 0,
-            categoryCaps: [Category: Double] = [:], // 改为单字典
-            capPeriod: CapPeriod = .yearly,
-            repaymentDay: Int = 0,
-            isRemindOpen: Bool = true
+    // MARK: - 初始化方法
+    
+    /// 新版初始化方法（使用 CardOrganization 和 CardLevel）
+    init(
+        bankName: String,
+        cardOrganization: CardOrganization,
+        cardLevel: CardLevel,
+        endNum: String,
+        colorHexes: [String] = [],
+        defaultRate: Double,
+        specialRates: [Category: Double] = [:],
+        issueRegion: Region,
+        foreignCurrencyRate: Double? = nil,
+        templateKey: String? = nil,
+        localBaseCap: Double = 0,
+        foreignBaseCap: Double = 0,
+        categoryCaps: [Category: Double] = [:],
+        capPeriod: CapPeriod = .yearly,
+        monthlyBaseCap: Double? = nil,
+        yearlyBaseCap: Double? = nil,
+        repaymentDay: Int = 0,
+        isRemindOpen: Bool = true,
+        ftf: Double = 0.0,
+        cbf: Double = 0.0,
+        ftfExceptCurrencyCodes: [String] = [],
+        cardImageData: Data? = nil
     ) {
         self.bankName = bankName
-        self.type = type
+        self.cardOrganization = cardOrganization
+        self.cardLevel = cardLevel
         self.endNum = endNum
         self.colorHexes = colorHexes
         self.defaultRate = defaultRate
@@ -87,26 +163,68 @@ class CreditCard: Identifiable {
         self.issueRegion = issueRegion
         self.foreignCurrencyRate = foreignCurrencyRate
         self.templateKey = templateKey
-
-        // 赋值
+        self.localBaseCap = localBaseCap
+        self.foreignBaseCap = foreignBaseCap
+        self.capPeriod = capPeriod
+        self.monthlyBaseCap = monthlyBaseCap
+        self.yearlyBaseCap = yearlyBaseCap
+        self.categoryCaps = categoryCaps
+        self.repaymentDay = repaymentDay
+        self.isRemindOpen = isRemindOpen
+        self.ftf = ftf
+        self.cbf = cbf
+        self.ftfExceptCurrencyCodes = ftfExceptCurrencyCodes
+        self.cardImageData = cardImageData
+    }
+    
+    /// 旧版初始化方法（使用 type 字符串，保持向后兼容）
+    init(bankName: String,
+         type: String,
+         endNum: String,
+         colorHexes: [String],
+         defaultRate: Double,
+         specialRates: [Category: Double],
+         issueRegion: Region,
+         foreignCurrencyRate: Double? = nil,
+         templateKey: String? = nil,
+         localBaseCap: Double = 0,
+         foreignBaseCap: Double = 0,
+         categoryCaps: [Category: Double] = [:],
+         capPeriod: CapPeriod = .yearly,
+         repaymentDay: Int = 0,
+         isRemindOpen: Bool = true
+    ) {
+        self.bankName = bankName
+        self._type = type
+        self.endNum = endNum
+        self.colorHexes = colorHexes
+        self.defaultRate = defaultRate
+        self.specialRates = specialRates
+        self.issueRegion = issueRegion
+        self.foreignCurrencyRate = foreignCurrencyRate
+        self.templateKey = templateKey
         self.localBaseCap = localBaseCap
         self.foreignBaseCap = foreignBaseCap
         self.capPeriod = capPeriod
         self.categoryCaps = categoryCaps
         self.repaymentDay = repaymentDay
         self.isRemindOpen = isRemindOpen
+        
+        // 尝试从 type 字符串解析 cardOrganization 和 cardLevel
+        self.cardOrganization = nil
+        self.cardLevel = nil
     }
     
+    // MARK: - 返现率计算
+    
     func getRate(for category: Category, location: Region) -> Double {
-        // 1. 获取类别带来的“额外”加成 (Category Bonus)
-        // 使用 ?? 0.0 避免字典里没有该类别时发生崩溃
+        // 1. 获取类别带来的"额外"加成 (Category Bonus)
         let categoryBonus = specialRates[category] ?? 0.0
         
         // 2. 确定基础费率 (Base Rate)
         var baseRate = defaultRate
         
         // 如果消费地 != 发卡地，且设置了境外费率，则使用境外费率作为基础
-        // (假设你的逻辑是：境外费率取代基础费率，然后再叠加类别)
         if location != issueRegion, let foreignRate = foreignCurrencyRate, foreignRate > 0 {
             baseRate = foreignRate
         }
@@ -114,178 +232,93 @@ class CreditCard: Identifiable {
         // 3. 核心修改：将基础费率与类别加成相加
         return baseRate + categoryBonus
     }
+    
+    // MARK: - 返现上限计算
+    
     func calculateCappedCashback(amount: Double, category: Category, location: Region, date: Date, transactionToExclude: Transaction? = nil) -> Double {
-            
-            let isForeign = (location != issueRegion)
-            
-            // --- 第一步：准备费率和当笔理论值 ---
-            var baseRate = defaultRate
-            if isForeign, let fr = foreignCurrencyRate, fr > 0 {
-                baseRate = fr
-            }
-            let potentialBaseReward = amount * baseRate
-            
-            let bonusRate = specialRates[category] ?? 0.0
-            let potentialBonusReward = amount * bonusRate
-            
-            // --- 第二步：准备上限阈值 ---
-            let baseCapLimit = isForeign ? foreignBaseCap : localBaseCap
-            let categoryCapLimit = categoryCaps[category] ?? 0.0
-            
-            // --- 第三步：统计历史用量 ---
-            let calendar = Calendar.current
-            let currentYear = calendar.component(.year, from: date)
-            let currentMonth = calendar.component(.month, from: date)
-            
-            // 筛选同一张卡在同一结算周期内的交易（排除正在编辑的这一笔）
-            let periodTransactions = (transactions ?? []).filter { t in
-                let year = calendar.component(.year, from: t.date)
-                guard year == currentYear else { return false }
-                
-                let isNotSelf = (t != transactionToExclude)
-                guard isNotSelf else { return false }
-                
-                switch capPeriod {
-                case .yearly:
-                    // 同一年即可
-                    return true
-                case .monthly:
-                    let month = calendar.component(.month, from: t.date)
-                    return month == currentMonth
-                }
-            }
-            
-            // A. 计算已用基础返现 (估算值)
-            var usedBase: Double = 0
-            if baseCapLimit > 0 {
-                usedBase = periodTransactions
-                    .filter { ($0.location != self.issueRegion) == isForeign }
-                    .reduce(0) { sum, t in
-                        let tBaseRate = ((t.location != self.issueRegion) && (foreignCurrencyRate ?? 0) > 0) ? (foreignCurrencyRate ?? 0) : defaultRate
-                        return sum + (t.billingAmount * tBaseRate)
-                    }
-            }
-            
-            // B. 计算已用加成返现 (估算值)
-            var usedBonus: Double = 0
-            if categoryCapLimit > 0 {
-                usedBonus = periodTransactions
-                    .filter { $0.category == category }
-                    .reduce(0) { sum, t in
-                        let tBonusRate = specialRates[t.category] ?? 0.0
-                        return sum + (t.billingAmount * tBonusRate)
-                    }
-            }
-            
-            // --- 第四步：结算 (Reward Cap 逻辑) ---
-            var finalBase = potentialBaseReward
-            if baseCapLimit > 0 {
-                let remaining = max(0, baseCapLimit - usedBase)
-                finalBase = min(potentialBaseReward, remaining)
-            }
-            
-            var finalBonus = potentialBonusReward
-            if categoryCapLimit > 0 {
-                let remaining = max(0, categoryCapLimit - usedBonus)
-                finalBonus = min(potentialBonusReward, remaining)
-            }
-            
-            return finalBase + finalBonus
+        let isForeign = (location != issueRegion)
+        
+        // --- 第一步：准备费率和当笔理论值 ---
+        var baseRate = defaultRate
+        if isForeign, let fr = foreignCurrencyRate, fr > 0 {
+            baseRate = fr
         }
-    func calculateCappedCashback(amount: Double, category: Category, location: Region, date: Date) -> Double {
+        let potentialBaseReward = amount * baseRate
+        
+        let bonusRate = specialRates[category] ?? 0.0
+        let potentialBonusReward = amount * bonusRate
+        
+        // --- 第二步：准备上限阈值 ---
+        let baseCapLimit = isForeign ? foreignBaseCap : localBaseCap
+        let categoryCapLimit = categoryCaps[category] ?? 0.0
+        
+        // --- 第三步：统计历史用量 ---
+        let calendar = Calendar.current
+        let currentYear = calendar.component(.year, from: date)
+        let currentMonth = calendar.component(.month, from: date)
+        
+        // 筛选同一张卡在同一结算周期内的交易（排除正在编辑的这一笔）
+        let periodTransactions = (transactions ?? []).filter { t in
+            let year = calendar.component(.year, from: t.date)
+            guard year == currentYear else { return false }
             
-            let isForeign = (location != issueRegion)
+            let isNotSelf = (t != transactionToExclude)
+            guard isNotSelf else { return false }
             
-            // --- 第一步：准备费率和当笔理论值 ---
-            
-            // 1. 基础部分 (Base)
-            var baseRate = defaultRate
-            if isForeign, let fr = foreignCurrencyRate, fr > 0 {
-                baseRate = fr
+            switch capPeriod {
+            case .yearly:
+                return true
+            case .monthly:
+                let month = calendar.component(.month, from: t.date)
+                return month == currentMonth
             }
-            let potentialBaseReward = amount * baseRate
-            
-            // 2. 加成部分 (Bonus)
-            let bonusRate = specialRates[category] ?? 0.0
-            let potentialBonusReward = amount * bonusRate
-            
-            // --- 第二步：准备上限阈值 ---
-            
-            let baseCapLimit = isForeign ? foreignBaseCap : localBaseCap
-            let categoryCapLimit = categoryCaps[category] ?? 0.0
-            
-            // --- 第三步：统计历史用量 (关键) ---
-            // 我们需要计算“当前结算周期已经产生了多少理论返现”，来看看是否触发上限
-            
-            let calendar = Calendar.current
-            let currentYear = calendar.component(.year, from: date)
-            let currentMonth = calendar.component(.month, from: date)
-            
-            // 筛选当前结算周期内的所有交易
-            let periodTransactions = (transactions ?? []).filter { t in
-                let year = calendar.component(.year, from: t.date)
-                guard year == currentYear else { return false }
-                
-                switch capPeriod {
-                case .yearly:
-                    // 同一年即可
-                    return true
-                case .monthly:
-                    let month = calendar.component(.month, from: t.date)
-                    return month == currentMonth
+        }
+        
+        // A. 计算已用基础返现 (估算值)
+        var usedBase: Double = 0
+        if baseCapLimit > 0 {
+            usedBase = periodTransactions
+                .filter { ($0.location != self.issueRegion) == isForeign }
+                .reduce(0) { sum, t in
+                    let tBaseRate = ((t.location != self.issueRegion) && (foreignCurrencyRate ?? 0) > 0) ? (foreignCurrencyRate ?? 0) : defaultRate
+                    return sum + (t.billingAmount * tBaseRate)
                 }
-            }
-            
-            // A. 计算已用的“基础额度”
-            // 规则：只累加“同区域类型”(本币vs外币) 的交易产生的“基础返现”
-            var usedBase: Double = 0
-            if baseCapLimit > 0 {
-                usedBase = periodTransactions
-                    .filter { ($0.location != self.issueRegion) == isForeign } // 筛选同区域
-                    .reduce(0) { sum, t in
-                        // 估算历史交易的基础返现 (Spend * BaseRate)
-                        // 注意：这里假设历史费率没变，用当前费率估算
-                        let tBaseRate = ((t.location != self.issueRegion) && (foreignCurrencyRate ?? 0) > 0) ? (foreignCurrencyRate ?? 0) : defaultRate
-                        return sum + (t.billingAmount * tBaseRate)
-                    }
-            }
-            
-            // B. 计算已用的“类别加成额度”
-            // 规则：累加“同类别”的交易产生的“加成返现” (不管它是在哪里消费的，因为是共用池)
-            var usedBonus: Double = 0
-            if categoryCapLimit > 0 {
-                usedBonus = periodTransactions
-                    .filter { $0.category == category } // 筛选同类别
-                    .reduce(0) { sum, t in
-                        // 估算历史交易的加成返现
-                        let tBonusRate = specialRates[t.category] ?? 0.0
-                        return sum + (t.billingAmount * tBonusRate)
-                    }
-            }
-            
-            // --- 第四步：结算 ---
-            
-            // 1. 结算基础部分
-            var finalBase = potentialBaseReward
-            if baseCapLimit > 0 {
-                let remaining = max(0, baseCapLimit - usedBase)
-                finalBase = min(potentialBaseReward, remaining)
-            }
-            
-            // 2. 结算加成部分
-            var finalBonus = potentialBonusReward
-            if categoryCapLimit > 0 {
-                let remaining = max(0, categoryCapLimit - usedBonus)
-                finalBonus = min(potentialBonusReward, remaining)
-            }
-            
-            // --- 第五步：相加返回 ---
-            return finalBase + finalBonus
+        }
+        
+        // B. 计算已用加成返现 (估算值)
+        var usedBonus: Double = 0
+        if categoryCapLimit > 0 {
+            usedBonus = periodTransactions
+                .filter { $0.category == category }
+                .reduce(0) { sum, t in
+                    let tBonusRate = specialRates[t.category] ?? 0.0
+                    return sum + (t.billingAmount * tBonusRate)
+                }
+        }
+        
+        // --- 第四步：结算 (Reward Cap 逻辑) ---
+        var finalBase = potentialBaseReward
+        if baseCapLimit > 0 {
+            let remaining = max(0, baseCapLimit - usedBase)
+            finalBase = min(potentialBaseReward, remaining)
+        }
+        
+        var finalBonus = potentialBonusReward
+        if categoryCapLimit > 0 {
+            let remaining = max(0, categoryCapLimit - usedBonus)
+            finalBonus = min(potentialBonusReward, remaining)
+        }
+        
+        return finalBase + finalBonus
     }
     
+    func calculateCappedCashback(amount: Double, category: Category, location: Region, date: Date) -> Double {
+        return calculateCappedCashback(amount: amount, category: category, location: location, date: date, transactionToExclude: nil)
+    }
 }
 
-// 👇 必须加这个 Extension 才能让颜色和字符串互转
+// MARK: - Color Extension
+
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -312,9 +345,7 @@ extension Color {
     }
 }
 
-
 extension Color {
-    // 把 Color 转成 Hex 字符串 (例如 "FF0000")
     func toHex() -> String? {
         let uic = UIColor(self)
         guard let components = uic.cgColor.components, components.count >= 3 else {
