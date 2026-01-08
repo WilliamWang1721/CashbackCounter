@@ -14,7 +14,7 @@ struct AddTransactionFromSMSIntent: AppIntent {
     // 参数：用户在快捷指令里输入或粘贴的短信文本
     @Parameter(
       title: "短信全文",
-      requestValueDialog: IntentDialog("请粘贴信用卡短信内容")  // 提示用户输入内容
+      requestValueDialog: IntentDialog("请粘贴信用卡短信内容")
     )
     var smsText: String
     
@@ -35,11 +35,11 @@ struct AddTransactionFromSMSIntent: AppIntent {
         
         let modelContext = ModelContext(Self.sharedModelContainer)
         
-        
         let textToParse = smsText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !textToParse.isEmpty else {
-                    throw NSError(domain: "AddTransactionFromSMSIntent", code: 0, userInfo: [NSLocalizedDescriptionKey: "请提供短信文本"])
-                }
+        guard !textToParse.isEmpty else {
+            throw NSError(domain: "AddTransactionFromSMSIntent", code: 0, userInfo: [NSLocalizedDescriptionKey: "请提供短信文本"])
+        }
+        
         // 在主线程上创建解析器并调用 parse()
         let parser = ReceiptParser()
         let metadata = try await parser.SMSparse(text: textToParse)
@@ -52,7 +52,6 @@ struct AddTransactionFromSMSIntent: AppIntent {
             throw NSError(domain: "AddTransactionFromSMSIntent", code: 1, userInfo: [NSLocalizedDescriptionKey: "缺少商户、金额或类别信息"])
         }
 
-        // 将日期字符串转换为 Date，不存在则默认今天
         let date = Date()
 
         // 根据 currency 推断 Region
@@ -76,7 +75,7 @@ struct AddTransactionFromSMSIntent: AppIntent {
         }()
 
         // 计算入账金额和返现
-        let billingAmount = amount    // 如需跨币种，可根据汇率再计算
+        let billingAmount = amount
         let cashback = selectedCard?.calculateCappedCashback(
             amount: billingAmount,
             category: category,
@@ -84,21 +83,33 @@ struct AddTransactionFromSMSIntent: AppIntent {
             date: date
         ) ?? 0.0
 
-        // 创建并保存交易
+        // 获取币种代码
+        let spendingCurrencyCode = region.currencyCode
+        let billingCurrencyCode = selectedCard?.issueRegion.currencyCode ?? spendingCurrencyCode
+
+        // 创建并保存交易（使用新的模型字段）
         let newTransaction = Transaction(
             merchant: merchant,
             category: category,
             location: detectedRegion,
-            amount: amount,
+            spendingAmount: amount,
             date: date,
             card: selectedCard,
+            paymentMethod: "",
+            isOnlineShopping: false,
+            isCBFApplied: false,
+            isCreditTransaction: false,
             receiptData: nil,
             billingAmount: billingAmount,
-            cashbackAmount: cashback
+            cashbackAmount: cashback,
+            cbfAmount: 0.0,
+            spendingCurrency: spendingCurrencyCode,
+            billingCurrency: billingCurrencyCode
         )
         modelContext.insert(newTransaction)
         try modelContext.save()
-        // 返回意图执行结果，系统会在快捷指令中显示“完成”
-        return .result(dialog: "已成功添加账单：\(merchant) – ¥\(amount)")
+        
+        // 返回意图执行结果
+        return .result(dialog: "已成功添加账单：\(merchant) – \(spendingCurrencyCode)\(amount)")
     }
 }

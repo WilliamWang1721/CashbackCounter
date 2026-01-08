@@ -35,60 +35,165 @@ struct TransactionRow: View {
         guard let rate = exchangeRates[currencyCode], rate != 0 else { return nil }
         return amount / rate
     }
-
+    
+    // MARK: - Body
+    
     var body: some View {
         HStack(spacing: 12) {
-            // 1. 左侧图标
-            ZStack {
-                Circle()
-                    .fill(transaction.category.color.opacity(0.2))
-                    .frame(width: 44, height: 44)
-                
-                Image(systemName: transaction.category.iconName)
-                    .font(.system(size: 20))
-                    .foregroundColor(transaction.category.color)
-            }
+            // 1. 左侧类别图标
+            iconView
             
             // 2. 中间信息 (商户名 + 卡片名)
-            VStack(alignment: .leading, spacing: 4) {
+            mainInfoView
+            
+            Spacer(minLength: 8)
+            
+            // 3. 右侧金额与详情
+            amountInfoView
+        }
+        .padding(12)
+        .background(rowBackground)
+        .cornerRadius(12)
+        // 降低退款/还款记录的视觉权重
+        .opacity(transaction.isCreditTransaction ? 0.8 : 1.0)
+    }
+}
+
+// MARK: - Subviews
+
+private extension TransactionRow {
+    
+    var iconView: some View {
+        ZStack {
+            Circle()
+                .fill(transaction.category.color.opacity(0.2))
+                .frame(width: 44, height: 44)
+            
+            Image(systemName: transaction.category.iconName)
+                .font(.system(size: 20))
+                .foregroundColor(transaction.category.color)
+        }
+    }
+    
+    var mainInfoView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
                 Text(transaction.merchant)
                     .font(.headline)
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
                 
-                // ✨ 关键修改：显示卡片全称，允许换行
-                if let card = transaction.card {
-                    Text(card.bankName + " " + card.type)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true) // 允许垂直方向换行
-                        .lineLimit(2) // 最多显示2行，防止太长
+                // CR 标记（还款/退款）
+                if transaction.isCreditTransaction {
+                    if transaction.paymentMethod == "返现" {
+                        Text("返现CR")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .cornerRadius(3)
+                    } else {
+                        Text("CR")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.orange)
+                            .cornerRadius(3)
+                    }
                 }
             }
             
-            Spacer() // ✨ 关键修改：用 Spacer 撑开，保证右边对齐
+            if let cardName = cardDisplayName {
+                Text(cardName)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+            }
+        }
+    }
+    
+    var amountInfoView: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            // 消费金额
+            Text(amountString)
+                .fontWeight(.bold)
+                .foregroundColor(amountColor)
+                .monospacedDigit()
             
-            // 3. 右侧金额
-            VStack(alignment: .trailing, spacing: 4) {
-                // 消费金额
-                Text("\(transaction.location.currencyCode) \(String(format: "%.2f", transaction.amount))")
-                    .fontWeight(.bold)
-
+            // 日期 + 返现信息
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(transaction.dateString)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                // 显示返现
+                if shouldShowCashback {
+                    Text(cashbackString)
+                        .font(.caption2)
+                        .foregroundColor(cashbackTextColor)
+                        .monospacedDigit()
+                }
+                
+                // 显示收入信息
                 if let incomeText = incomeDisplayText {
                     Text("收入 \(incomeText)")
                         .font(.caption)
                         .foregroundColor(.green)
                 }
-
-                // 日期
-                HStack(spacing: 2) {
-                    // 显示交易日期
-                    Text(transaction.dateString)
-                }
-                .font(.caption)
             }
         }
-        .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
     }
 }
 
+// MARK: - Helpers
+
+private extension TransactionRow {
+    
+    var isRebate: Bool {
+        transaction.paymentMethod == "返现"
+    }
+    
+    var rowBackground: Color {
+        if isRebate {
+            return Color.green.opacity(0.05)
+        } else if transaction.isCreditTransaction {
+            return Color.orange.opacity(0.05)
+        } else {
+            return Color(uiColor: .secondarySystemGroupedBackground)
+        }
+    }
+    
+    var amountColor: Color {
+        if isRebate { return .green }
+        if transaction.isCreditTransaction { return .orange }
+        return .primary
+    }
+    
+    var cashbackTextColor: Color {
+        if isRebate { return .green }
+        if transaction.isCreditTransaction { return .orange }
+        return .green
+    }
+    
+    var cardDisplayName: String? {
+        guard let card = transaction.card else { return nil }
+        return card.bankName
+    }
+    
+    var amountString: String {
+        "\(transaction.billingCurrency)\(String(format: "%.2f", transaction.spendingAmount))"
+    }
+    
+    var shouldShowCashback: Bool {
+        if isRebate { return false }
+        return transaction.isCreditTransaction || transaction.cashbackamount > 0
+    }
+    
+    var cashbackString: String {
+        let amount = transaction.isCreditTransaction ? 0 : transaction.cashbackamount
+        return "返现 \(transaction.billingCurrency)\(String(format: "%.2f", amount))"
+    }
+}

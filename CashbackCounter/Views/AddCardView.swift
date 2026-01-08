@@ -35,9 +35,13 @@ struct AddCardView: View {
     @State private var digitalRateStr: String = ""
     @State private var otherRateStr: String = ""
     
-    // 👇 新增：上限设置 (Cap) 变量
-    @State private var localBaseCapStr: String = ""   // 本币基础上限
-    @State private var foreignBaseCapStr: String = "" // 外币基础上限
+    // 上限设置 (Cap) 变量
+    @State private var localBaseCapStr: String = ""
+    @State private var foreignBaseCapStr: String = ""
+    
+    // 新增：月度/年度上限
+    @State private var monthlyBaseCapStr: String = ""
+    @State private var yearlyBaseCapStr: String = ""
     
     // 各个类别的加成上限
     @State private var diningCapStr: String = ""
@@ -46,8 +50,18 @@ struct AddCardView: View {
     @State private var digitalCapStr: String = ""
     @State private var otherCapStr: String = ""
     
-    // 新增 State
+    // 还款日提醒
     @State private var repaymentDayStr: String = ""
+    @State private var isRemindOpen: Bool = false
+    
+    // 新增：FTF/CBF 相关
+    @State private var ftfStr: String = ""
+    @State private var cbfStr: String = ""
+    @State private var ftfExceptCurrencies: String = ""
+    
+    // 新增：卡面图片
+    @State private var selectedCardImage: UIImage?
+    @State private var showImagePicker = false
     
     // --- 2. 核心：自定义初始化 ---
     init(template: CardTemplate? = nil, cardToEdit: CreditCard? = nil, onSaved: (() -> Void)? = nil) {
@@ -63,7 +77,9 @@ struct AddCardView: View {
             if card.repaymentDay > 0 {
                 _repaymentDayStr = State(initialValue: String(card.repaymentDay))
             }
-            // 颜色回填 (利用 computed property 直接拿 Color)
+            _isRemindOpen = State(initialValue: card.isRemindOpen)
+            
+            // 颜色回填
             if card.colors.count >= 2 {
                 _color1 = State(initialValue: card.colors[0])
                 _color2 = State(initialValue: card.colors[1])
@@ -75,7 +91,7 @@ struct AddCardView: View {
             _region = State(initialValue: card.issueRegion)
             _capPeriod = State(initialValue: card.capPeriod)
             
-            // 费率回填 (注意：数据库存的是 0.01，界面显示要 *100 变成 "1.0")
+            // 费率回填
             _defaultRateStr = State(initialValue: String(card.defaultRate * 100))
             
             if let foreignRate = card.foreignCurrencyRate {
@@ -99,23 +115,38 @@ struct AddCardView: View {
                 _otherRateStr = State(initialValue: String(rate * 100))
             }
             
-            // 👇 新增：回填上限数据 (如果是 0 就不显示，留空代表无上限)
+            // 回填上限数据
             if card.localBaseCap > 0 { _localBaseCapStr = State(initialValue: String(format: "%.0f", card.localBaseCap)) }
             if card.foreignBaseCap > 0 { _foreignBaseCapStr = State(initialValue: String(format: "%.0f", card.foreignBaseCap)) }
+            if let monthCap = card.monthlyBaseCap, monthCap > 0 { _monthlyBaseCapStr = State(initialValue: String(format: "%.0f", monthCap)) }
+            if let yearCap = card.yearlyBaseCap, yearCap > 0 { _yearlyBaseCapStr = State(initialValue: String(format: "%.0f", yearCap)) }
             
-            // 回填类别上限 (从字典取)
+            // 回填类别上限
             if let cap = card.categoryCaps[.dining], cap > 0 { _diningCapStr = State(initialValue: String(format: "%.0f", cap)) }
             if let cap = card.categoryCaps[.grocery], cap > 0 { _groceryCapStr = State(initialValue: String(format: "%.0f", cap)) }
             if let cap = card.categoryCaps[.travel], cap > 0 { _travelCapStr = State(initialValue: String(format: "%.0f", cap)) }
             if let cap = card.categoryCaps[.digital], cap > 0 { _digitalCapStr = State(initialValue: String(format: "%.0f", cap)) }
             if let cap = card.categoryCaps[.other], cap > 0 { _otherCapStr = State(initialValue: String(format: "%.0f", cap)) }
             
+            // 回填 FTF/CBF
+            if card.ftf > 0 { _ftfStr = State(initialValue: String(format: "%.2f", card.ftf * 100)) }
+            if card.cbf > 0 { _cbfStr = State(initialValue: String(format: "%.2f", card.cbf * 100)) }
+            if !card.ftfExceptCurrencyCodes.isEmpty {
+                _ftfExceptCurrencies = State(initialValue: card.ftfExceptCurrencyCodes.joined(separator: ", "))
+            }
+            
+            // 回填卡面图片
+            if let imageData = card.cardImageData {
+                _selectedCardImage = State(initialValue: UIImage(data: imageData))
+            }
+            
         }
-        // 逻辑 B: 如果是模板模式 -> 填充模板数据 ***还没改
+        // 逻辑 B: 如果是模板模式 -> 填充模板数据
         else if let template = template {
             _bankName = State(initialValue: template.bankName)
             _cardType = State(initialValue: template.type)
-            _endNum = State(initialValue: "8888") // 模板不带尾号
+            _endNum = State(initialValue: "8888")
+            _isRemindOpen = State(initialValue: false)
             
             if template.localBaseCap > 0 {
                 _localBaseCapStr = State(initialValue: String(format: "%.0f", template.localBaseCap))
@@ -160,28 +191,23 @@ struct AddCardView: View {
                 _foreignRateStr = State(initialValue: "")
             }
             
-            // 5. ✅ 填充特殊返现率 (从字典里拆出来填给对应的 State)
-            // 餐饮
+            // 填充特殊返现率
             if let dining = template.specialRate[.dining] {
                 let s = String(format: "%.1f", dining).replacingOccurrences(of: ".0", with: "")
                 _diningRateStr = State(initialValue: s)
             }
-            // 超市
             if let grocery = template.specialRate[.grocery] {
                 let s = String(format: "%.1f", grocery).replacingOccurrences(of: ".0", with: "")
                 _groceryRateStr = State(initialValue: s)
             }
-            // 出行
             if let travel = template.specialRate[.travel] {
                 let s = String(format: "%.1f", travel).replacingOccurrences(of: ".0", with: "")
                 _travelRateStr = State(initialValue: s)
             }
-            // 数码
             if let digital = template.specialRate[.digital] {
                 let s = String(format: "%.1f", digital).replacingOccurrences(of: ".0", with: "")
                 _digitalRateStr = State(initialValue: s)
             }
-            // 其他
             if let other = template.specialRate[.other] {
                 let s = String(format: "%.1f", other).replacingOccurrences(of: ".0", with: "")
                 _otherRateStr = State(initialValue: s)
@@ -198,6 +224,7 @@ struct AddCardView: View {
             _capPeriod = State(initialValue: .monthly)
             _defaultRateStr = State(initialValue: "1.0")
             _foreignRateStr = State(initialValue: "")
+            _isRemindOpen = State(initialValue: false)
         }
     }
     
@@ -206,16 +233,39 @@ struct AddCardView: View {
             Form {
                 // 1. 实时预览
                 Section {
-                    CreditCardView(
-                        bankName: bankName.isEmpty ? "银行名称" : bankName,
-                        type: cardType.isEmpty ? "卡种" : cardType,
-                        endNum: endNum.isEmpty ? "8888" : endNum,
-                        colors: [color1, color2]
-                    )
-                    .listRowInsets(EdgeInsets())
-                    .padding(.vertical)
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    if let image = selectedCardImage {
+                        // 显示自定义卡面图片
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(1.586, contentMode: .fit)
+                            .cornerRadius(12)
+                            .overlay(
+                                VStack {
+                                    Spacer()
+                                    HStack {
+                                        Spacer()
+                                        Text(endNum.isEmpty ? "8888" : endNum)
+                                            .font(.caption)
+                                            .foregroundColor(.white)
+                                            .padding(8)
+                                            .background(Color.black.opacity(0.5))
+                                            .cornerRadius(4)
+                                    }
+                                }
+                                .padding(8)
+                            )
+                    } else {
+                        CreditCardView(
+                            bankName: bankName.isEmpty ? "银行名称" : bankName,
+                            type: cardType.isEmpty ? "卡种" : cardType,
+                            endNum: endNum.isEmpty ? "8888" : endNum,
+                            colors: [color1, color2]
+                        )
+                    }
                 }
+                .listRowInsets(EdgeInsets())
+                .padding(.vertical)
+                .background(Color(uiColor: .systemGroupedBackground))
                 
                 // 2. 基本信息
                 Section(header: Text("基本信息")) {
@@ -226,41 +276,108 @@ struct AddCardView: View {
                         .onChange(of: endNum) { oldValue, newValue in
                             if newValue.count > 4 { endNum = String(newValue.prefix(4)) }
                         }
-                }
-                HStack {
-                    Text("还款日提醒 (每月)")
-                    Spacer()
-                    TextField("无", text: $repaymentDayStr)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 50)
-                    Text("日")
-                        .foregroundColor(.secondary)
-                }
-                
-                // 3. 颜色设置
-                Section(header: Text("卡面风格")) {
-                    ColorPicker("渐变色 1", selection: $color1)
-                    ColorPicker("渐变色 2", selection: $color2)
-                }
-                Section(header: Text("返现上限周期")){
-                    Picker("返现上限周期", selection: $capPeriod) {
-                        Text("按月").tag(CapPeriod.monthly)
-                        Text("按年").tag(CapPeriod.yearly)
-                    }
-                }
-                
-                .pickerStyle(.segmented)
-                // 4. 规则设置
-                Section(header: Text("基础返现 (所有消费)")) {
-
+                    
                     Picker("发行地区", selection: $region) {
                         ForEach(Region.allCases, id: \.self) { r in
                             Text("\(r.icon) \(r.rawValue)").tag(r)
                         }
                     }
+                }
+                
+                // 还款日提醒
+                Section(header: Text("还款提醒")) {
+                    HStack {
+                        Text("还款日 (每月)")
+                        Spacer()
+                        TextField("无", text: $repaymentDayStr)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 50)
+                        Text("日")
+                            .foregroundColor(.secondary)
+                    }
                     
-                    // --- 本币基础 ---
+                    Toggle("开启还款提醒", isOn: $isRemindOpen)
+                    
+                    if isRemindOpen && !repaymentDayStr.isEmpty {
+                        Text("将在每月 \(repaymentDayStr) 日发送提醒")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // 卡面设置
+                Section(header: Text("卡面管理")) {
+                    if selectedCardImage != nil {
+                        Button {
+                            showImagePicker = true
+                        } label: {
+                            Label("更换卡面", systemImage: "photo.on.rectangle")
+                        }
+                        
+                        Button(role: .destructive) {
+                            selectedCardImage = nil
+                        } label: {
+                            Label("移除自定义卡面", systemImage: "trash")
+                        }
+                    } else {
+                        Button {
+                            showImagePicker = true
+                        } label: {
+                            Label("添加卡面图片", systemImage: "photo.on.rectangle")
+                        }
+                        
+                        // 渐变色设置（仅在没有自定义图片时显示）
+                        ColorPicker("渐变色 1", selection: $color1)
+                        ColorPicker("渐变色 2", selection: $color2)
+                    }
+                }
+                
+                // FTF/CBF 设置
+                Section(header: Text("外币交易费")) {
+                    HStack {
+                        Text("FTF (外币交易费)")
+                        Spacer()
+                        TextField("0", text: $ftfStr)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        Text("%")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("免 FTF 币种")
+                        Spacer()
+                        TextField("如: USD, EUR", text: $ftfExceptCurrencies)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 120)
+                    }
+                    
+                    HStack {
+                        Text("CBF (跨境港币交易费)")
+                        Spacer()
+                        TextField("0", text: $cbfStr)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        Text("%")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // 返现上限周期
+                Section(header: Text("返现上限周期")){
+                    Picker("返现上限周期", selection: $capPeriod) {
+                        Text("按月").tag(CapPeriod.monthly)
+                        Text("按年").tag(CapPeriod.yearly)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                // 基础返现设置
+                Section(header: Text("基础返现 (所有消费)")) {
+                    // 本币基础
                     HStack {
                         Text("本币返现率 (%)")
                         Spacer()
@@ -273,13 +390,13 @@ struct AddCardView: View {
                         Text("本币\(capPeriod == .monthly ? "月" : "年")上限")
                             .font(.caption).foregroundColor(.secondary)
                         Spacer()
-                        TextField("无上限", text: $localBaseCapStr) // 👈 新增
+                        TextField("无上限", text: $localBaseCapStr)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
                     }
                     
-                    // --- 外币基础 ---
+                    // 外币基础
                     HStack {
                         Text("外币返现率 (%)")
                         Spacer()
@@ -292,14 +409,35 @@ struct AddCardView: View {
                         Text("外币\(capPeriod == .monthly ? "月" : "年")上限")
                             .font(.caption).foregroundColor(.secondary)
                         Spacer()
-                        TextField("无上限", text: $foreignBaseCapStr) // 👈 新增
+                        TextField("无上限", text: $foreignBaseCapStr)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                    
+                    // 新版上限（月度/年度）
+                    HStack {
+                        Text("月度总上限")
+                            .font(.caption).foregroundColor(.secondary)
+                        Spacer()
+                        TextField("无上限", text: $monthlyBaseCapStr)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                    HStack {
+                        Text("年度总上限")
+                            .font(.caption).foregroundColor(.secondary)
+                        Spacer()
+                        TextField("无上限", text: $yearlyBaseCapStr)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
                     }
                 }
+                
+                // 类别加成
                 Section(header: Text("类别加成 (额外叠加)")) {
-                    // 使用一个辅助 View 来减少重复代码 (在下方定义)
                     CategoryInputRow(name: "餐饮", rate: $diningRateStr, cap: $diningCapStr)
                     CategoryInputRow(name: "超市", rate: $groceryRateStr, cap: $groceryCapStr)
                     CategoryInputRow(name: "出行", rate: $travelRateStr, cap: $travelCapStr)
@@ -308,7 +446,6 @@ struct AddCardView: View {
                 }
                 
             }
-            // 动态标题：有 cardToEdit 就是“编辑”，否则是“添加”
             .navigationTitle(cardToEdit == nil ? "添加信用卡" : "编辑卡片")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -321,12 +458,15 @@ struct AddCardView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(selectedImage: $selectedCardImage, sourceType: .photoLibrary)
+            }
         }
     }
     
     // --- 3. 核心保存逻辑 ---
     func saveCard() {
-        // 1. 处理费率 (保持不变)
+        // 1. 处理费率
         let defaultRate = (Double(defaultRateStr) ?? 0) / 100.0
         let rDay = Int(repaymentDayStr) ?? 0
         var foreignRate: Double? = nil
@@ -334,11 +474,11 @@ struct AddCardView: View {
             foreignRate = (Double(foreignRateStr) ?? 0) / 100.0
         }
         
-        // 2. 处理颜色 (保持不变)
+        // 2. 处理颜色
         let c1Hex = color1.toHex() ?? "0000FF"
         let c2Hex = color2.toHex() ?? "000000"
         
-        // 3. 处理类别加成率 (保持不变)
+        // 3. 处理类别加成率
         var specialRates: [Category: Double] = [:]
         if let rate = Double(diningRateStr), rate > 0 { specialRates[.dining] = rate / 100.0 }
         if let rate = Double(groceryRateStr), rate > 0 { specialRates[.grocery] = rate / 100.0 }
@@ -346,9 +486,11 @@ struct AddCardView: View {
         if let rate = Double(digitalRateStr), rate > 0 { specialRates[.digital] = rate / 100.0 }
         if let rate = Double(otherRateStr), rate > 0 { specialRates[.other] = rate / 100.0 }
         
-        // 👇 4. 处理新字段：上限 (Caps)
+        // 4. 处理上限
         let locBaseCap = Double(localBaseCapStr) ?? 0
         let forBaseCap = Double(foreignBaseCapStr) ?? 0
+        let monthCap: Double? = Double(monthlyBaseCapStr)
+        let yearCap: Double? = Double(yearlyBaseCapStr)
         
         var catCaps: [Category: Double] = [:]
         if let cap = Double(diningCapStr), cap > 0 { catCaps[.dining] = cap }
@@ -357,6 +499,16 @@ struct AddCardView: View {
         if let cap = Double(digitalCapStr), cap > 0 { catCaps[.digital] = cap }
         if let cap = Double(otherCapStr), cap > 0 { catCaps[.other] = cap }
         
+        // 5. 处理 FTF/CBF
+        let ftfValue = (Double(ftfStr) ?? 0) / 100.0
+        let cbfValue = (Double(cbfStr) ?? 0) / 100.0
+        let ftfExceptCodes = ftfExceptCurrencies
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
+            .filter { !$0.isEmpty }
+        
+        // 6. 处理卡面图片
+        let cardImageData = selectedCardImage?.jpegData(compressionQuality: 0.8)
         
         if let existingCard = cardToEdit {
             // 编辑模式
@@ -370,12 +522,19 @@ struct AddCardView: View {
             existingCard.capPeriod = capPeriod
             existingCard.specialRates = specialRates
             
-            
-            // 👇 更新新属性
             existingCard.localBaseCap = locBaseCap
             existingCard.foreignBaseCap = forBaseCap
+            existingCard.monthlyBaseCap = monthCap
+            existingCard.yearlyBaseCap = yearCap
             existingCard.categoryCaps = catCaps
-            existingCard.repaymentDay = rDay // 赋值
+            existingCard.repaymentDay = rDay
+            existingCard.isRemindOpen = isRemindOpen
+            
+            existingCard.ftf = ftfValue
+            existingCard.cbf = cbfValue
+            existingCard.ftfExceptCurrencyCodes = ftfExceptCodes
+            existingCard.cardImageData = cardImageData
+            
             NotificationManager.shared.scheduleNotification(for: existingCard)
             
         } else {
@@ -390,12 +549,18 @@ struct AddCardView: View {
                 issueRegion: region,
                 foreignCurrencyRate: foreignRate,
                 templateKey: template?.templateKey,
-                // 👇 传入新属性
                 localBaseCap: locBaseCap,
                 foreignBaseCap: forBaseCap,
                 categoryCaps: catCaps,
                 capPeriod: capPeriod,
-                repaymentDay: rDay // 赋值
+                repaymentDay: rDay,
+                isRemindOpen: isRemindOpen,
+                ftf: ftfValue,
+                cbf: cbfValue,
+                ftfExceptCurrencyCodes: ftfExceptCodes,
+                monthlyBaseCap: monthCap,
+                yearlyBaseCap: yearCap,
+                cardImageData: cardImageData
             )
             context.insert(newCard)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

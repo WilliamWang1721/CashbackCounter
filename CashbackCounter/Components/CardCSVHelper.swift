@@ -4,13 +4,16 @@ import SwiftData
 
 struct CardCSVHelper {
     
-    // CSV 表头
-    static let header = "银行名称,卡种名称,尾号,颜色1(Hex),颜色2(Hex),地区(Code),本币返现率(%),外币返现率(%),本币上限,外币上限,餐饮加成(%),超市加成(%),出行加成(%),数码加成(%),其他加成(%),餐饮上限,超市上限,出行上限,数码上限,其他上限,上限周期(monthly/yearly),还款日"
+    // CSV V2 表头（新增 FTF/CBF/月度年度上限等字段）
+    static let headerV2 = "银行名称,卡种名称,尾号,颜色1(Hex),颜色2(Hex),地区(Code),本币返现率(%),外币返现率(%),本币上限,外币上限,餐饮加成(%),超市加成(%),出行加成(%),数码加成(%),其他加成(%),餐饮上限,超市上限,出行上限,数码上限,其他上限,上限周期(monthly/yearly),还款日,FTF(%),CBF(%),免FTF币种,月度上限,年度上限,开启提醒"
     
-    // MARK: - 导出逻辑 (生成字符串)
+    // CSV V1 表头（旧版本兼容）
+    static let headerV1 = "银行名称,卡种名称,尾号,颜色1(Hex),颜色2(Hex),地区(Code),本币返现率(%),外币返现率(%),本币上限,外币上限,餐饮加成(%),超市加成(%),出行加成(%),数码加成(%),其他加成(%),餐饮上限,超市上限,出行上限,数码上限,其他上限,上限周期(monthly/yearly),还款日"
+    
+    // MARK: - 导出逻辑 (生成字符串) - V2 格式
     static func generateCSV(from cards: [CreditCard]) -> String {
         // \u{FEFF} 是 BOM 头，确保 Excel 打开中文不乱码
-        var csvString = "\u{FEFF}" + header + "\n"
+        var csvString = "\u{FEFF}" + headerV2 + "\n"
         
         for card in cards {
             // 1. 基础信息 (防止逗号破坏格式)
@@ -42,8 +45,8 @@ struct CardCSVHelper {
             let travelCap = fmtCap(card.categoryCaps[.travel])
             let digitalCap = fmtCap(card.categoryCaps[.digital])
             let otherCap = fmtCap(card.categoryCaps[.other])
-            // 👇 6. 新增：还款日
-            // 如果是 0 就不显示，或者显示 0 也可以，看你喜好
+            
+            // 6. 上限周期和还款日
             let rDay = card.repaymentDay > 0 ? String(card.repaymentDay) : ""
             let capPeriodStr: String
             switch card.capPeriod {
@@ -53,13 +56,21 @@ struct CardCSVHelper {
                 capPeriodStr = "yearly"
             }
             
-            let row = "\(bank),\(type),\(endNum),\(c1),\(c2),\(region),\(defRate),\(forRate),\(locCap),\(forCap),\(diningRate),\(groceryRate),\(travelRate),\(digitalRate),\(otherRate),\(diningCap),\(groceryCap),\(travelCap),\(digitalCap),\(otherCap),\(capPeriodStr),\(rDay)\n"
+            // 7. 新增字段：FTF/CBF/免FTF币种/月度年度上限/开启提醒
+            let ftfStr = card.ftf > 0 ? String(format: "%.2f", card.ftf * 100) : ""
+            let cbfStr = card.cbf > 0 ? String(format: "%.2f", card.cbf * 100) : ""
+            let ftfExceptStr = card.ftfExceptCurrencyCodes.joined(separator: ";")
+            let monthlyCapStr = card.monthlyBaseCap != nil ? String(format: "%.0f", card.monthlyBaseCap!) : ""
+            let yearlyCapStr = card.yearlyBaseCap != nil ? String(format: "%.0f", card.yearlyBaseCap!) : ""
+            let isRemindStr = card.isRemindOpen ? "是" : "否"
+            
+            let row = "\(bank),\(type),\(endNum),\(c1),\(c2),\(region),\(defRate),\(forRate),\(locCap),\(forCap),\(diningRate),\(groceryRate),\(travelRate),\(digitalRate),\(otherRate),\(diningCap),\(groceryCap),\(travelCap),\(digitalCap),\(otherCap),\(capPeriodStr),\(rDay),\(ftfStr),\(cbfStr),\(ftfExceptStr),\(monthlyCapStr),\(yearlyCapStr),\(isRemindStr)\n"
             csvString.append(row)
         }
         return csvString
     }
     
-    // MARK: - 导入逻辑 (解析字符串)
+    // MARK: - 导入逻辑 (解析字符串) - 兼容 V1 和 V2 格式
     static func parseCSV(content: String, into context: ModelContext) throws {
         let rows = content.components(separatedBy: .newlines)
         let templates = try context.fetch(FetchDescriptor<CardTemplate>())
@@ -71,7 +82,7 @@ struct CardCSVHelper {
             let columns = row.components(separatedBy: ",")
             if columns.count < 21 { continue }
         
-            // 解析逻辑...
+            // 解析基础字段
             let bankName = columns[0]
             let type = columns[1]
             let endNum = columns[2]
@@ -100,7 +111,7 @@ struct CardCSVHelper {
             if let c = Double(columns[18]), c > 0 { categoryCaps[.digital] = c }
             if let c = Double(columns[19]), c > 0 { categoryCaps[.other] = c }
             
-            // 旧版本 CSV 没有“上限周期”这一列；新版本在 index 20 上多了一列
+            // 解析上限周期和还款日
             let capPeriod: CapPeriod
             let rDay: Int
             if columns.count >= 22 {
@@ -111,20 +122,52 @@ struct CardCSVHelper {
                 case "yearly", "year", "y", "按年":
                     capPeriod = .yearly
                 default:
-                    capPeriod = .yearly   // 默认按年，兼容脏数据
+                    capPeriod = .yearly
                 }
                 rDay = Int(columns[21]) ?? 0
             } else {
-                // 兼容旧 CSV：没有这一列时，统一按年计算
                 capPeriod = .yearly
                 rDay = Int(columns[20]) ?? 0
             }
             
+            // V2 新增字段（兼容旧版本）
+            var ftf: Double = 0
+            var cbf: Double = 0
+            var ftfExceptCodes: [String] = []
+            var monthlyBaseCap: Double? = nil
+            var yearlyBaseCap: Double? = nil
+            var isRemindOpen: Bool = false
+            
+            if columns.count >= 28 {
+                // V2 格式
+                ftf = (Double(columns[22]) ?? 0) / 100.0
+                cbf = (Double(columns[23]) ?? 0) / 100.0
+                ftfExceptCodes = columns[24].split(separator: ";").map { String($0).trimmingCharacters(in: .whitespaces) }
+                if let mc = Double(columns[25]), mc > 0 { monthlyBaseCap = mc }
+                if let yc = Double(columns[26]), yc > 0 { yearlyBaseCap = yc }
+                isRemindOpen = columns[27].trimmingCharacters(in: .whitespaces) == "是"
+            }
+            
             let newCard = CreditCard(
-                bankName: bankName, type: type, endNum: endNum, colorHexes: [c1, c2],
-                defaultRate: defRate, specialRates: specialRates, issueRegion: region,
-                foreignCurrencyRate: forRate, localBaseCap: locCap, foreignBaseCap: forCap, categoryCaps: categoryCaps,
-                capPeriod: capPeriod, repaymentDay: rDay
+                bankName: bankName,
+                type: type,
+                endNum: endNum,
+                colorHexes: [c1, c2],
+                defaultRate: defRate,
+                specialRates: specialRates,
+                issueRegion: region,
+                foreignCurrencyRate: forRate,
+                localBaseCap: locCap,
+                foreignBaseCap: forCap,
+                categoryCaps: categoryCaps,
+                capPeriod: capPeriod,
+                repaymentDay: rDay,
+                isRemindOpen: isRemindOpen,
+                ftf: ftf,
+                cbf: cbf,
+                ftfExceptCurrencyCodes: ftfExceptCodes,
+                monthlyBaseCap: monthlyBaseCap,
+                yearlyBaseCap: yearlyBaseCap
             )
 
             let templateKey = CardTemplate.templateKey(bankName: bankName, type: type)
@@ -150,7 +193,7 @@ struct CardCSVHelper {
     }
 }
 
-// 👇 核心扩展：完全照抄 BillHomeView 的 exportCSVFile 模式
+// 核心扩展：完全照抄 BillHomeView 的 exportCSVFile 模式
 extension Array where Element == CreditCard {
     
     // 生成临时的 CSV 文件 URL (用于分享)
@@ -164,8 +207,7 @@ extension Array where Element == CreditCard {
         let dateString = formatter.string(from: Date())
         let fileName = "Cards_Backup_\(dateString).csv"
         
-        // 3. 写入临时目录 (Temporary Directory)
-        // 这里和 BillHomeView 保持一致，用 temporaryDirectory
+        // 3. 写入临时目录
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         
         do {
