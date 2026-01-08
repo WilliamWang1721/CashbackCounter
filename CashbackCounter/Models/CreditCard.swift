@@ -20,11 +20,8 @@ class CreditCard: Identifiable {
     
     var bankName: String
     
-    /// 卡组织（例如：Visa、Mastercard）- 新版字段
-    var cardOrganization: CardOrganization?
-    
-    /// 卡等级（例如：白金卡、无限卡）- 新版字段
-    var cardLevel: CardLevel?
+    /// 卡种类型（如 "Visa 白金卡"）
+    var type: String
     
     /// 卡片尾号
     var endNum: String
@@ -35,7 +32,7 @@ class CreditCard: Identifiable {
     /// 是否开启还款提醒
     var isRemindOpen: Bool = true
     
-    // MARK: - 旧版卡面颜色（保留兼容）
+    // MARK: - 卡面颜色
     /// 卡面颜色 Hex 值数组（用于渐变）
     var colorHexes: [String]
     
@@ -44,29 +41,9 @@ class CreditCard: Identifiable {
         return colorHexes.map { Color(hex: $0) }
     }
     
-    // MARK: - 新版卡面图片
+    // MARK: - 自定义卡面图片（新增）
     /// 自定义卡面图片数据
     @Attribute(.externalStorage) var cardImageData: Data?
-    
-    // MARK: - 旧版卡种类型（保留兼容）
-    /// 卡种类型字符串（如 "Visa 白金卡"）
-    /// 新版本中由 cardOrganization + cardLevel 计算得出
-    private var _type: String?
-    
-    /// 卡种类型的显示名称
-    var type: String {
-        get {
-            // 优先使用新版字段组合
-            if let org = cardOrganization, let level = cardLevel {
-                return "\(org.displayName) \(level.displayName)"
-            }
-            // 兼容旧版本
-            return _type ?? "未知卡种"
-        }
-        set {
-            _type = newValue
-        }
-    }
     
     // MARK: - 返现率设置
     
@@ -79,13 +56,13 @@ class CreditCard: Identifiable {
     /// 发卡地区
     var issueRegion: Region
     
-    /// 境外消费返现率（旧版字段，保留兼容）
+    /// 境外消费返现率
     var foreignCurrencyRate: Double?
     
     /// 模板来源标识（用于模板更新同步）
     var templateKey: String?
     
-    // MARK: - 费用相关（新版字段）
+    // MARK: - 费用相关（新增）
     
     /// 外币交易兑换费（Foreign Transaction Fee）百分比
     var ftf: Double = 0.0
@@ -99,19 +76,19 @@ class CreditCard: Identifiable {
     
     // MARK: - 返现上限设置
     
-    /// 本币基础返现上限（旧版字段）
+    /// 本币基础返现上限
     var localBaseCap: Double
     
-    /// 外币基础返现上限（旧版字段）
+    /// 外币基础返现上限
     var foreignBaseCap: Double
     
-    /// 返现上限结算周期（旧版字段）
+    /// 返现上限结算周期
     var capPeriod: CapPeriod
     
-    /// 基础返现月度上限（新版字段，nil 或 0 表示无上限）
+    /// 基础返现月度上限（新增，nil 或 0 表示无上限）
     var monthlyBaseCap: Double?
     
-    /// 基础返现年度上限（新版字段，nil 或 0 表示无上限）
+    /// 基础返现年度上限（新增，nil 或 0 表示无上限）
     var yearlyBaseCap: Double?
     
     /// 类别加成上限（Key: 消费类别, Value: 该类别的上限）
@@ -128,34 +105,30 @@ class CreditCard: Identifiable {
     
     // MARK: - 初始化方法
     
-    /// 新版初始化方法（使用 CardOrganization 和 CardLevel）
-    init(
-        bankName: String,
-        cardOrganization: CardOrganization,
-        cardLevel: CardLevel,
-        endNum: String,
-        colorHexes: [String] = [],
-        defaultRate: Double,
-        specialRates: [Category: Double] = [:],
-        issueRegion: Region,
-        foreignCurrencyRate: Double? = nil,
-        templateKey: String? = nil,
-        localBaseCap: Double = 0,
-        foreignBaseCap: Double = 0,
-        categoryCaps: [Category: Double] = [:],
-        capPeriod: CapPeriod = .yearly,
-        monthlyBaseCap: Double? = nil,
-        yearlyBaseCap: Double? = nil,
-        repaymentDay: Int = 0,
-        isRemindOpen: Bool = true,
-        ftf: Double = 0.0,
-        cbf: Double = 0.0,
-        ftfExceptCurrencyCodes: [String] = [],
-        cardImageData: Data? = nil
+    init(bankName: String,
+         type: String,
+         endNum: String,
+         colorHexes: [String],
+         defaultRate: Double,
+         specialRates: [Category: Double],
+         issueRegion: Region,
+         foreignCurrencyRate: Double? = nil,
+         templateKey: String? = nil,
+         localBaseCap: Double = 0,
+         foreignBaseCap: Double = 0,
+         categoryCaps: [Category: Double] = [:],
+         capPeriod: CapPeriod = .yearly,
+         monthlyBaseCap: Double? = nil,
+         yearlyBaseCap: Double? = nil,
+         repaymentDay: Int = 0,
+         isRemindOpen: Bool = true,
+         ftf: Double = 0.0,
+         cbf: Double = 0.0,
+         ftfExceptCurrencyCodes: [String] = [],
+         cardImageData: Data? = nil
     ) {
         self.bankName = bankName
-        self.cardOrganization = cardOrganization
-        self.cardLevel = cardLevel
+        self.type = type
         self.endNum = endNum
         self.colorHexes = colorHexes
         self.defaultRate = defaultRate
@@ -175,44 +148,6 @@ class CreditCard: Identifiable {
         self.cbf = cbf
         self.ftfExceptCurrencyCodes = ftfExceptCurrencyCodes
         self.cardImageData = cardImageData
-    }
-    
-    /// 旧版初始化方法（使用 type 字符串，保持向后兼容）
-    init(bankName: String,
-         type: String,
-         endNum: String,
-         colorHexes: [String],
-         defaultRate: Double,
-         specialRates: [Category: Double],
-         issueRegion: Region,
-         foreignCurrencyRate: Double? = nil,
-         templateKey: String? = nil,
-         localBaseCap: Double = 0,
-         foreignBaseCap: Double = 0,
-         categoryCaps: [Category: Double] = [:],
-         capPeriod: CapPeriod = .yearly,
-         repaymentDay: Int = 0,
-         isRemindOpen: Bool = true
-    ) {
-        self.bankName = bankName
-        self._type = type
-        self.endNum = endNum
-        self.colorHexes = colorHexes
-        self.defaultRate = defaultRate
-        self.specialRates = specialRates
-        self.issueRegion = issueRegion
-        self.foreignCurrencyRate = foreignCurrencyRate
-        self.templateKey = templateKey
-        self.localBaseCap = localBaseCap
-        self.foreignBaseCap = foreignBaseCap
-        self.capPeriod = capPeriod
-        self.categoryCaps = categoryCaps
-        self.repaymentDay = repaymentDay
-        self.isRemindOpen = isRemindOpen
-        
-        // 尝试从 type 字符串解析 cardOrganization 和 cardLevel
-        self.cardOrganization = nil
-        self.cardLevel = nil
     }
     
     // MARK: - 返现率计算
